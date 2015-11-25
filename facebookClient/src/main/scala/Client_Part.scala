@@ -11,10 +11,6 @@ import akka.actor._
 //import common._
 import akka.util._
 import scala.concurrent.duration._
-
-
-import scala.util.Random
-
 import akka.routing.RoundRobinRouter
 import java.net.InetAddress
 
@@ -28,7 +24,7 @@ case class send_getUser(userCount: Int)
 case class send(user: Int)
 case class stopChk(start: Long)
 
-object Client_Part 
+object FacebookClient 
 {
     private val start:Long=System.currentTimeMillis
     def main(args: Array[String])
@@ -36,13 +32,14 @@ object Client_Part
 	  val system = ActorSystem("ClientSystem")
 	  //println("How many Users?")
 	  val numOfUsers = 5
-	  val client_actor =system.actorOf(Props(new ClientActor(system,numOfUsers)),name="ClientActor")
+	  val client_actor =system.actorOf(Props(new FacebookAPISimulator(system,numOfUsers)),name="ClientActor")
 	 // val receiver =system.actorOf(Props(new clientReceiver()),name="ClientReceiver")
 	  client_actor ! Start(system)
   }
+}
 
 //simulatorn, use statistics , creation and posting , reading according to our studies, with n number of users
-class ClientActor(system : ActorSystem, userCount : Int) extends Actor 
+class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor 
 {
   var clientBuffer= new ArrayBuffer[ActorRef]() 
   
@@ -50,7 +47,7 @@ class ClientActor(system : ActorSystem, userCount : Int) extends Actor
   	{       
   	 case Start(system) => 
   		{
-  			val client_driver = context.actorOf(Props(new Tweeting(system)),name="TwitterTable") 					
+  			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="TwitterTable") 					
   			for(i <-0 until userCount) 
   			{
           println("chutiyapa")
@@ -62,7 +59,7 @@ class ClientActor(system : ActorSystem, userCount : Int) extends Actor
   	}
 }
 //usercount is nth number of facebook user
-class Tweeting(system:ActorSystem) extends Actor { 
+class FacebookAPIClient(system:ActorSystem) extends Actor { 
   import system.dispatcher
   val pipeline1 = sendReceive
   val pipeline2 = sendReceive
@@ -85,7 +82,7 @@ class Tweeting(system:ActorSystem) extends Actor {
 
   	}
 }
-}
+//}
 	
 
 

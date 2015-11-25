@@ -7,6 +7,8 @@ import spray.routing.SimpleRoutingApp
 import scala.util.Random
 import java.io._
 
+import scala.util.{Success, Failure}
+
 //spray stuff
 import akka.routing.ConsistentHashingRouter
 import akka.routing.ConsistentHashingRouter.ConsistentHashMapping
@@ -41,34 +43,33 @@ import scala.concurrent.duration._
 //import common._
 import scala.util.Random
 
-
 case class Profile(userName : String,ageOfUser: Int) extends Serializable
 
 case class SetProfileInfoOfUser(userCount: Int)
 case class GetProfileInfoOfUser(userName:String)
 
-object Server_Part extends App with SimpleRoutingApp
+object FacebookServer extends App with SimpleRoutingApp
 { 
-	var tweetsHandled:Long=0
+	//var tweetsHandled:Long=0
   override def main(args: Array[String]) 
   {
     //import system.dispatcher
 	  implicit val system = ActorSystem("facebookAPI")
 	  val actorCount: Int = Runtime.getRuntime().availableProcessors()*100
-	  var tweetStore = new ListBuffer[Queue[String]] ()
-	  var hashTagStore = new ListBuffer[Queue[String]] ()
-	  var followingList = new ArrayBuffer[ArrayBuffer[Int]] ()
+	  //var tweetStore = new ListBuffer[Queue[String]] ()
+	  //var hashTagStore = new ListBuffer[Queue[String]] ()
+	  //var followingList = new ArrayBuffer[ArrayBuffer[Int]] ()
     implicit val timeout = akka.util.Timeout(500)
 
-	  println("Twitter Server Started....")
+	  println("Facebook Server Started....")
 
-    val server_actor = system.actorOf(Props[Server_Part], name="server_part")
+    val server_actor = system.actorOf(Props[FacebookUser], name="server_part")
 
     lazy val createUserForFb = post {
           path("facebook" / "createUser") {
             println("bp1....")
             parameters("userCount".as[Int]) { (userCount) =>
-            val server_actor = system.actorOf(Props[Server_Part],name="facebookUser"+userCount) 
+            val server_actor = system.actorOf(Props[FacebookUser],name="facebookUser"+userCount) 
             println(server_actor)
             server_actor!SetProfileInfoOfUser(userCount)
               complete {
@@ -83,11 +84,29 @@ object Server_Part extends App with SimpleRoutingApp
               path("facebook" / "getProfileInfoOfUser"){
                 parameters("userName".as[String]) { (userName) =>
                   val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
-                  var future = actor ? GetProfileInfoOfUser(userName)
-                  var userProfile = Await.result(future, timeout.duration).asInstanceOf[Profile]
-                  complete{ 
-                  JsonUtil.toJson(userProfile)//change it
-                  }
+                  
+                 // implicit val timeout = Timeout(5 seconds)
+                  // val userProfile = ask(actor, GetProfileInfoOfUser(userName)).mapTo[Profile]
+                  
+                  // complete{ 
+                  //  JsonUtil.toJson(userProfile)//change it
+                  //  }
+
+                  // future onComplete {
+                  //  case Success(userProfile) => JsonUtil.toJson(userProfile)
+                  //  case Failure(t) => println("An error has occured: " + t.getMessage)
+                  //  }
+
+                  // userProfile onComplete {
+                  // case Success(x) => JsonUtil.toJson(x)
+                  // case Failure(t) => println("An error has occured: " + t.getMessage)
+                  // }
+
+                   var future = actor ? GetProfileInfoOfUser(userName)
+                   var userProfile = Await.result(future, timeout.duration).asInstanceOf[Profile]
+                   complete{ 
+                   JsonUtil.toJson(userProfile)//change it
+                   }
                 }
                 
               }
@@ -99,16 +118,15 @@ object Server_Part extends App with SimpleRoutingApp
         profileInfoOfUserOnFb
         
          }
-
-
-      }       
+       }
+       }       
 	//}
 	  
   //this class actually denotes the user actor of facebook
-  class Server_Part extends Actor 
+  class FacebookUser extends Actor 
   {
     val writer = new FileWriter("Server_Output.txt",true )
-    var tweetsMap = new scala.collection.mutable.HashMap[String, Profile]()
+    var profileMap = new scala.collection.mutable.HashMap[String, Profile]()
     var userName:String = ""
     var ageOfUser:Int = 0
     //var profileObj : Profile = Profile("NoName",0)
@@ -129,7 +147,7 @@ object Server_Part extends App with SimpleRoutingApp
 
       case GetProfileInfoOfUser(userName:String)=>
           { 
-          val profileObject = tweetsMap.get(userName) match{
+          val profileObject = profileMap.get(userName) match{
           case Some(profileObject) => profileObject
           case None => Profile("Error",0)
          }
@@ -145,19 +163,16 @@ object Server_Part extends App with SimpleRoutingApp
       }
 
       def putProfile(userName:String,profileObj:Profile){
-        tweetsMap += (userName -> profileObj)
+        profileMap += (userName -> profileObj)
       }
     
   }
 
-}
+//}
 
 object JsonUtil{
   
   //private implicit val formats = Serialization.formats(NoTypeHints)
   implicit val formats = native.Serialization.formats(ShortTypeHints(List(classOf[Profile])))
   def toJson(profile:Profile) : String = writePretty(profile)
-  
-  
-  
 }
