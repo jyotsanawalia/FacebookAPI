@@ -1,4 +1,4 @@
-package Twitter_Simulator
+package FacebookAPI
 
 import akka.actor.{ Actor, ActorRef, Props, ActorSystem }
 import scala.collection.mutable._

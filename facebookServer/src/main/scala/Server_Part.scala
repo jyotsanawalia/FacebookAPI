@@ -1,4 +1,4 @@
-package facebookProject4
+package FacebookAPI
 
 import akka.actor.{ Actor, ActorRef, Props, ActorSystem }
 import akka.routing.RoundRobinRouter
