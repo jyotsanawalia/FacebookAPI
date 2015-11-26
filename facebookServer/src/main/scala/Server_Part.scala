@@ -33,7 +33,7 @@ import spray.routing.{Route, RequestContext}
 import spray.routing.directives._
 
 case class Profile(userName: String,ageOfUser: Int) extends Serializable
-case class ProfileList(profileList : Iterator)
+case class ProfileList(profileList : ArrayBuffer[Profile])
 case class ProfileInfo(userName:String,profileObject:Profile) extends Serializable
 case class SetProfileInfoOfUser(userCount: Int)
 case class GetProfileInfoOfUser(userName:String)
@@ -137,24 +137,26 @@ object FacebookServer extends App with SimpleRoutingApp
         // for(i<-0 until profileList.length)
         //         println("profileList(i) = "+profileList(i))
         // println("ok again")
-        val profileListObject = ProfileList(profileMapForAllUsers.values)
-        sender ! profileListObject
+        //val profileListObject = ProfileList(profileMapForAllUsers)
+       // sender ! profileListObject
         //val profileList = new ArrayBuffer[Profile]()
         //for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
-        // for(i<-0 until count){
-        //   var userName : String = "facebookUser"+i
-        //   var profileObject = profileMapForAllUsers.get(userName) match{
-        //     case Some(profileObject) =>
-        //     {
-        //       println("profileObject: "+profileObject)
-        //       profileList += profileObject
-        //     }
-        //     case None => Profile("Error",0)
-        //     }
-        //     //profileList += profileObject
+         for(i<-0 until profileMapForAllUsers.size){
+          var userName : String = "facebookUser"+i
+           var profileObject = profileMapForAllUsers.get(userName) match{
+             case Some(profileObject) =>
+             {
+               println("profileObject: "+profileObject)
+               profileList += profileObject
+             }
+             case None => Profile("Error",0)
+             }
+             //profileList += profileObject
         // }
         // println("yay")
-        //sender ! profileMapForAllUsers
+      }
+      val profileListObject = ProfileList(profileList)
+      sender ! profileListObject
       }     
     }
   }
