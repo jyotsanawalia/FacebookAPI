@@ -18,11 +18,12 @@ import java.net.InetAddress
 
 
 case class Start(system : ActorSystem)
-case class send_createUser(userCount: Int)
-case class send_getUser(userCount: Int)
+case class Send_createUser(userCount: Int)
+case class Send_getUser(userCount: Int)
+case object Send_getUsersInfo
 
-case class send(user: Int)
-case class stopChk(start: Long)
+//case class send(user: Int)
+//case class stopChk(start: Long)
 
 object FacebookClient 
 {
@@ -32,7 +33,7 @@ object FacebookClient
 	  val system = ActorSystem("ClientSystem")
 	  //println("How many Users?")
 	  val numOfUsers = 5
-	  val client_actor =system.actorOf(Props(new FacebookAPISimulator(system,numOfUsers)),name="ClientActor")
+	  val client_actor =system.actorOf(Props(new FacebookAPISimulator(system,numOfUsers)),name="FacebookAPISimulator")
 	 // val receiver =system.actorOf(Props(new clientReceiver()),name="ClientReceiver")
 	  client_actor ! Start(system)
   }
@@ -47,14 +48,16 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   	{       
   	 case Start(system) => 
   		{
-  			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="TwitterTable") 					
+  			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient") 					
   			for(i <-0 until userCount) 
   			{
           println("chutiyapa")
-  			 client_driver ! send_createUser(i)
+  			 client_driver ! Send_createUser(i)
   			}
 
-        client_driver ! send_getUser(3)
+        client_driver ! Send_getUser(3)
+
+        client_driver ! Send_getUsersInfo
         }
   	}
 }
@@ -63,21 +66,31 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   import system.dispatcher
   val pipeline1 = sendReceive
   val pipeline2 = sendReceive
+  val pipeline3 = sendReceive
 
 	def receive = 
   	{
-  		case send_createUser(userCount) =>
+  		case Send_createUser(userCount) =>
   		{
           println("bpc1....")
             pipeline1(Post("http://localhost:8080/facebook/createUser?userCount="+userCount))
   		}
 
-      case send_getUser(userCount) =>
+      case Send_getUser(userCount) =>
       {
            val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileInfoOfUser?userName=facebookUser"+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
           }
+      }
+
+      case Send_getUsersInfo =>
+      {
+        println("Send_getUsersInfo")
+        val result = pipeline3(Get("http://localhost:8080/facebook/getProfileInfoOfUsers"))
+        result.foreach { response =>
+          println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+        }
       }
 
   	}
