@@ -45,6 +45,11 @@ case object GetProfileMap
 case class ProfileMapForAll(profileMap:HashMap[String,Profile])
 case class GetProfileMapOfAllUsers(start:Int,limit:Int)
 
+
+//friendlist
+case class UpdateFriendListOfUser(friendList : List[String])
+case class AddToFriendListMapOfCache(userName:String, friendList:List[String])
+
 object FacebookServer extends App with SimpleRoutingApp
 { 
 
@@ -74,6 +79,29 @@ object FacebookServer extends App with SimpleRoutingApp
             }
           }
         }
+
+        lazy val updateFriendListOfTheUser = post {
+          path("facebook" / "updateFriendListOfFbUser") {
+            println("bp1....")
+            parameters("userName".as[String],"friendUserName".as[String],"action".as[String]) { (userName,friendUserName,action) =>
+            val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+userName)
+            var friendList = List("facebookUser1", "facebookUser2", "facebookUser3", "facebookUser4", "facebookUser5")
+            if(action=="update"){
+                 friendList = friendList.filter(_ != userName)
+            }else if(action=="add"){
+                friendList = friendList.filter(_ == userName)// add here
+            }else if(action=="delete"){
+                friendList = friendList.filter(_ != userName)// subtract here
+            }
+            
+            facebookUser_actor ! UpdateFriendListOfUser(friendList)
+              complete {
+                "updated for user="+userName
+              }
+            }
+          }
+        }
+
 
         lazy val profileInfoOfUserOnFb = get {
         respondWithMediaType(MediaTypes.`application/json`)
@@ -128,6 +156,7 @@ object FacebookServer extends App with SimpleRoutingApp
   	   startServer(interface = "localhost", port = 8080) {
         
         createUserForFb ~
+        updateFriendListOfTheUser ~
         profileInfoOfUserOnFb ~
         profileInfoOfUsers ~
         getAllProfileInfoOfUserOnFb
@@ -140,13 +169,15 @@ object FacebookServer extends App with SimpleRoutingApp
   {
     val profileMapForAllUsers = new scala.collection.mutable.HashMap[String,Profile]()
     val profileList = new ArrayBuffer[Profile]()
+    var userFriendMap = new scala.collection.mutable.HashMap[String,List[String]]()
+
     def receive =
     {
       case ProfileMap(userName, profileObject)=>
       {
-        println("ProfileMap inside CacheMaster")
+        //println("ProfileMap inside CacheMaster")
         profileMapForAllUsers += (userName -> profileObject)
-        for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
+        //for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
       }
 
       case GetProfileMap=>
@@ -189,6 +220,14 @@ object FacebookServer extends App with SimpleRoutingApp
       sender ! ProfileMapForAll(profileMapForAllUsers)
       }   
 
+      case AddToFriendListMapOfCache(userName, friendList) => {
+          userFriendMap += (userName -> friendList)
+          for ((k,v) <- userFriendMap) {
+            println("key:"+k+"\tvalue:"+v)
+          println(v mkString "\n")
+        }
+      }
+
     }
   }
 //}
@@ -200,6 +239,8 @@ object FacebookServer extends App with SimpleRoutingApp
     var profileMap = new scala.collection.mutable.HashMap[String, Profile]()
     var userName:String = ""
     var ageOfUser:Int = 0
+    var friendList : List[String] = List[String]()
+    var friendCount : Int = 0
     def receive = 
       {    
         //FOLLOWING LIST AND TWEETSTORE
@@ -221,12 +262,27 @@ object FacebookServer extends App with SimpleRoutingApp
           case None => Profile("Error",0)
           }
           sender ! profileObject
-        }      
+        } 
+
+        case UpdateFriendListOfUser(friendList1)=>
+          {    
+                 friendList = friendList1
+                 friendCount = friendList1.length
+                 putFriendList(userName,friendList)
+          }
+
       }
+
+      
+
 
       def putProfile(userName :String,profileObj:Profile){
         profileMap += (userName -> profileObj)
         cache_actor ! ProfileMap(userName, profileObj)
+      }
+
+      def putFriendList(userName :String,friendList:List[String]){ 
+        cache_actor ! AddToFriendListMapOfCache(userName, friendList)
       }
     
   }
