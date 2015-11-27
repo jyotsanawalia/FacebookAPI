@@ -37,8 +37,13 @@ case class ProfileList(profileList : ArrayBuffer[Profile])
 case class ProfileInfo(userName:String,profileObject:Profile) extends Serializable
 case class SetProfileInfoOfUser(userCount: Int)
 case class GetProfileInfoOfUser(userName:String)
+
 case class ProfileMap(userName: String, profileObject : Profile)
 case object GetProfileMap
+
+//added now
+case class ProfileMapForAll(profileMap:HashMap[String,Profile])
+case class GetProfileMapOfAllUsers(start:Int,limit:Int)
 
 object FacebookServer extends App with SimpleRoutingApp
 { 
@@ -48,7 +53,7 @@ object FacebookServer extends App with SimpleRoutingApp
     //import system.dispatcher
 	  implicit val system = ActorSystem("facebookAPI")
 	  val actorCount: Int = Runtime.getRuntime().availableProcessors()*100
-    implicit val timeout =  akka.util.Timeout(5000)
+    implicit val timeout =  akka.util.Timeout(50000)
     //var profileList = new java.util.ArrayList[Profile]()
 
 	  println("Facebook Server Started....")
@@ -100,13 +105,32 @@ object FacebookServer extends App with SimpleRoutingApp
               }
             }
           }
-        //}
+        
+
+        lazy val getAllProfileInfoOfUserOnFb = get {
+        respondWithMediaType(MediaTypes.`application/json`)
+              path("facebook" / "getProfileOfAllFacebookUsers"){
+                parameters("start".as[Int]) { (start) =>
+                  println("here1")                  
+                   val future = cache_actor ? GetProfileMapOfAllUsers(start,10)
+                   val userProfileHashMap = Await.result(future, timeout.duration).asInstanceOf[ProfileMapForAll]
+                   complete{ 
+                    //userProfileHashMap
+                   JsonUtil.toJson(userProfileHashMap)
+
+                   }
+                }
+                
+              }
+            }
+        
 
   	   startServer(interface = "localhost", port = 8080) {
         
         createUserForFb ~
         profileInfoOfUserOnFb ~
-        profileInfoOfUsers
+        profileInfoOfUsers ~
+        getAllProfileInfoOfUserOnFb
         
          }
        }
@@ -122,7 +146,7 @@ object FacebookServer extends App with SimpleRoutingApp
       {
         println("ProfileMap inside CacheMaster")
         profileMapForAllUsers += (userName -> profileObject)
-        //for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
+        for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
       }
 
       case GetProfileMap=>
@@ -157,7 +181,14 @@ object FacebookServer extends App with SimpleRoutingApp
       }
       val profileListObject = ProfileList(profileList)
       sender ! profileListObject
-      }     
+      }  
+
+      case GetProfileMapOfAllUsers(start,limit)=>
+      {
+      println("Here too")  
+      sender ! ProfileMapForAll(profileMapForAllUsers)
+      }   
+
     }
   }
 //}
@@ -180,7 +211,7 @@ object FacebookServer extends App with SimpleRoutingApp
           println("Username is" + userName);
           println("ageOfUser is" + ageOfUser);
           val profileObj = Profile(userName,ageOfUser)
-          putProfile(userName,profileObj)
+          putProfile(userName,profileObj)       
           }
 
       case GetProfileInfoOfUser(userName)=>
@@ -189,7 +220,6 @@ object FacebookServer extends App with SimpleRoutingApp
           case Some(profileObject) => profileObject
           case None => Profile("Error",0)
           }
-         // println("yay")
           sender ! profileObject
         }      
       }
@@ -203,7 +233,9 @@ object FacebookServer extends App with SimpleRoutingApp
 
 object JsonUtil{
   
-  implicit val formats = native.Serialization.formats(ShortTypeHints(List(classOf[Profile])))
+  implicit val formats = native.Serialization.formats(ShortTypeHints(List(classOf[ProfileMap])))
+  // implicit val formats = native.Serialization.formats(ShortTypeHints(List(classOf[Profile])))
   def toJson(profile:Profile) : String = writePretty(profile)
   def toJson(profileList:ProfileList) : String = writePretty(profileList)
+  def toJson(profileMap:ProfileMapForAll) : String = writePretty(profileMap)
 }

@@ -6,9 +6,7 @@ import spray.http._
 import spray.client.pipelining._
 import scala.util.Random
 import scala.concurrent.ExecutionContext
-//client stuff
 import akka.actor._
-//import common._
 import akka.util._
 import scala.concurrent.duration._
 import akka.routing.RoundRobinRouter
@@ -21,6 +19,9 @@ case class Start(system : ActorSystem)
 case class Send_createUser(userCount: Int)
 case class Send_getUser(userCount: Int)
 case object Send_getUsersInfo
+case class Send_getAllUsers(start:Int)
+
+case class Send_updateFriendListOfFbUser(userName:Int,friendUserName:Int,action:String)
 
 //case class send(user: Int)
 //case class stopChk(start: Long)
@@ -52,12 +53,16 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   			for(i <-0 until userCount) 
   			{
           println("chutiyapa")
-  			 client_driver ! Send_createUser(i)
+  			  client_driver ! Send_createUser(i)
   			}
 
-        client_driver ! Send_getUser(3)
 
-        client_driver ! Send_getUsersInfo
+        client_driver ! Send_getUser(2)
+
+        client_driver ! Send_getAllUsers(3)
+
+        client_driver ! Send_updateFriendListOfFbUser(1,3,"update")
+        //client_driver ! Send_getUsersInfo
         }
   	}
 }
@@ -76,6 +81,12 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
             pipeline1(Post("http://localhost:8080/facebook/createUser?userCount="+userCount))
   		}
 
+      case Send_updateFriendListOfFbUser(userName,friendUserName,action) =>
+      {
+          println("bpc3....")
+            pipeline1(Post("http://localhost:8080/facebook/updateFriendListOfFbUser?userName=facebookUser"+userName+"&friendUserName=facebookUser"+friendUserName+"&action="+action ))
+      }
+
       case Send_getUser(userCount) =>
       {
            val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileInfoOfUser?userName=facebookUser"+userCount))
@@ -91,6 +102,15 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         result.foreach { response =>
           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
         }
+      }
+
+      case Send_getAllUsers(userCount) =>
+      {
+           val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileOfAllFacebookUsers?start="+userCount))
+           result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           //println(s"Request completed with status ${response.status} and content:\n${response.asString}")
+          }
       }
 
   	}
