@@ -32,10 +32,11 @@ import spray.http._
 import spray.routing.{Route, RequestContext}
 import spray.routing.directives._
 
-case class Profile(userName: String,dob: String, gender:String, phoneNumber:String, emailId:String, image : String) extends Serializable
+case class Profile(userName: String,dob: String, gender:String, phoneNumber:String, emailId:String, image : String, isPage : Int) extends Serializable
 case class ProfileList(profileList : ArrayBuffer[Profile])
 case class ProfileInfo(userName:String,profileObject:Profile) extends Serializable
 case class SetProfileInfoOfUser(userCount: Int,dob:String,gender:String, phoneNumber:String)
+case class SetProfileInfoOfPage(userCount: Int,dob:String,gender:String, phoneNumber:String)
 case class GetProfileInfoOfUser(userName:String)
 
 case class ProfileMap(userName: String, profileObject : Profile)
@@ -49,6 +50,11 @@ case class GetProfileMapOfAllUsers(start:Int,limit:Int)
 //friendlist
 case class UpdateFriendListOfUser(friendList : List[String])
 case class AddToFriendListMapOfCache(userName:String, friendList:List[String])
+case class FriendListMap(friendlist:HashMap[String,List[String]])
+case class GetFriendListOfUser(userName:String)
+
+//page owner list
+case class AddToPageOwnerListMapOfCache(userName:String, pageOwnerList:List[String])
 
 //posts
 case class Post(author: String,content: String) extends Serializable
@@ -77,7 +83,7 @@ object FacebookServer extends App with SimpleRoutingApp
           path("facebook" / "createUser") {
             println("bp1....")
                 entity(as[FormData]) { fields =>
-                    println("Fields = " + fields)
+                    //println("Fields = " + fields)
                     val userId = fields.fields(0)._2
                     val dob= fields.fields(1)._2
                     val gender = fields.fields(2)._2
@@ -89,9 +95,25 @@ object FacebookServer extends App with SimpleRoutingApp
           }
         }
 
+        lazy val createPageForFb = post {
+          path("facebook" / "createPage") {
+            //println("bp7....")
+                entity(as[FormData]) { fields =>
+                    //println("Fields = " + fields)
+                    val userId = fields.fields(0)._2
+                    val dob= fields.fields(1)._2
+                    val gender = fields.fields(2)._2
+                    val phoneNumber = fields.fields(3)._2
+                    val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+userId) 
+                    facebookUser_actor!SetProfileInfoOfPage(userId.toInt,dob,gender,phoneNumber)
+                    complete("Done")
+            }
+          }
+        }
+
         lazy val updateFriendListOfTheUser = post {
           path("facebook" / "updateFriendListOfFbUser") {
-            println("bp1....")
+            //println("bp1....")
             parameters("userName".as[String],"friendUserName".as[String],"action".as[String]) { (userName,friendUserName,action) =>
             val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+userName)
             val facebookFriend_actor = system.actorSelection("akka://facebookAPI/user/"+friendUserName)
@@ -138,6 +160,19 @@ object FacebookServer extends App with SimpleRoutingApp
                    }
                 }
                 
+              }
+
+              lazy val getFriendListOfUser = get {
+                respondWithMediaType(MediaTypes.`application/json`)
+                path("facebook"/"getAllFriendsOfUser"/Segment){  userCount =>
+                  val userName = "facebookUser"+userCount
+                  //val actor = system.actorSelection("akka://facebookAPI/user/"+userCount)
+                  val future = cache_actor ? GetFriendListOfUser(userName)
+                  val friendList = Await.result(future, timeout.duration).asInstanceOf[FriendListMap]
+                  complete{
+                    JsonUtil.toJson(friendList)
+                  }
+                }
               }
 
         lazy val getAllProfileInfoOfUserOnFb = get {
@@ -208,10 +243,12 @@ object FacebookServer extends App with SimpleRoutingApp
 
   	     startServer(interface = "localhost", port = 8080) {
           createUserForFb ~
+          createPageForFb ~
           updateFriendListOfTheUser ~
           profileInfoOfUserOnFb ~
           //profileInfoOfUsers ~
           getAllProfileInfoOfUserOnFb ~
+          getFriendListOfUser ~
           createPost ~
           getAllPostsOfUserOnFb
 
@@ -224,9 +261,12 @@ object FacebookServer extends App with SimpleRoutingApp
     val profileMapForAllUsers = new scala.collection.mutable.HashMap[String,Profile]()
     val profileList = new ArrayBuffer[Profile]()
     var userFriendMap = new scala.collection.mutable.HashMap[String,List[String]]()
+    var pageOwnerMap = new scala.collection.mutable.HashMap[String,List[String]]()
     //var postMapForAllUsers = new scala.collection.mutable.HashMap[String,PostMapForTheUser]()
     var postMapForAllUsers = new scala.collection.mutable.HashMap[String,HashMap[String, Post]]()
-    
+    var friendListMapOfUser = new scala.collection.mutable.HashMap[String,List[String]]()
+    var emptyList : List[String] = List("","","")
+
     def receive =
     {
       case ProfileMap(userName, profileObject)=>
@@ -257,7 +297,7 @@ object FacebookServer extends App with SimpleRoutingApp
                println("profileObject: "+profileObject)
                profileList += profileObject
              }
-             case None => Profile("Error","Error","Error","Error","Error","Error")
+             case None => Profile("Error","Error","Error","Error","Error","Error", 0)
              }
       }
       val profileListObject = ProfileList(profileList)
@@ -278,12 +318,30 @@ object FacebookServer extends App with SimpleRoutingApp
 
       case AddToFriendListMapOfCache(userName, friendList) => {
           userFriendMap += (userName -> friendList)
-          for ((k,v) <- userFriendMap) {
-            println("key:"+k+"\tvalue:"+v)
-        }
-
+          //println("friend list of user : "+userName)
+          //val friendListObj = FriendListMap(userFriendMap)
+          //for ((k,v) <- userFriendMap) {
+            //println("friend list of username:"+userName+"\tkey:"+k+"\tvalue:"+v)
+          //}
+          //println("next")
       }
 
+      case AddToPageOwnerListMapOfCache(userName, pageOwnerList) => {
+        pageOwnerMap += (userName -> pageOwnerList)
+        //println("page owner list for page : "+userName)
+        //for((k,v) <- pageOwnerMap){
+          //println("key:"+k+"\tvalue:"+v)
+        //}
+      }
+
+      case GetFriendListOfUser(userName) => {
+        val friendList : List[String]= userFriendMap.get(userName) match{
+          case Some(friendList) => friendList
+          case None => emptyList
+          }
+          friendListMapOfUser += (userName -> friendList)
+        sender ! FriendListMap(friendListMapOfUser)
+      }
     }
   }
 //}
@@ -306,36 +364,51 @@ object FacebookServer extends App with SimpleRoutingApp
       {    
         case SetProfileInfoOfUser(userCount,dob,gender,phoneNumber)=>
           {    
-            println("bp2....")
+            //println("bp2....")
             userName = "facebookUser"+userCount;
             emailId = userName+"@gmail.com"
-            println("Username is : " + userName);
-            println("Date Of Birth of user is : " + dob);
-            println("Gender is : "+gender)
-            println("Phone Number is : "+phoneNumber)
-            val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image)
+            //println("Username is : " + userName);
+            //println("Date Of Birth of user is : " + dob);
+            //println("Gender is : "+gender)
+            //println("Phone Number is : "+phoneNumber)
+            //println("isPage : "+isPage)
+            val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image,isPage)
             putProfile(userName,profileObj)       
           }
 
-          // case SetProfileInfoOfPage()
-          // {
-
-          // }
+        case SetProfileInfoOfPage(userCount,dob,gender,phoneNumber)=>
+          {
+            //println("bp7....")
+            isPage = 1
+            userName = "facebookPage"+userCount;
+            emailId = userName+"@gmail.com"
+            //println("Page name is : " + userName);
+            //println("Date Of Birth of user is : " + dob);
+            //println("Gender is : "+gender)
+            //println("Phone Number is : "+phoneNumber)
+            //println("isPage : "+isPage)
+            var pageOwnerList = List("facebookUser1", "facebookUser2", "facebookUser3", "facebookUser4", "facebookUser5")
+            val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image,isPage)
+            putProfile(userName,profileObj)
+            putPageOwnerList(userName,pageOwnerList)     
+          }
 
       case GetProfileInfoOfUser(userName)=>
         { 
           val profileObject = profileMap.get(userName) match{
           case Some(profileObject) => profileObject
-          case None => Profile("Error","Error","Error","Error","Error","Error")
+          case None => Profile("Error","Error","Error","Error","Error","Error",0)
           }
           sender ! profileObject
         } 
 
         case UpdateFriendListOfUser(friendList1)=>
           {    
-                 friendList = friendList ::: friendList1
-                 friendCount = friendList.length
-                 putFriendList(userName,friendList)
+                friendList = friendList ::: friendList1
+                friendCount = friendList.length
+                //sprintln("userName : "+userName)
+                //val friendListObject = FriendList(userName, friendlist)
+                putFriendList(userName,friendList)
           }
 
         case CreatePost(content,postId)=>
@@ -348,9 +421,6 @@ object FacebookServer extends App with SimpleRoutingApp
           }
 
       }
-
-      
-
 
       def putProfile(userName :String,profileObj:Profile){
         profileMap += (userName -> profileObj)
@@ -371,6 +441,10 @@ object FacebookServer extends App with SimpleRoutingApp
       def putFriendList(userName :String,friendList:List[String]){ 
         cache_actor ! AddToFriendListMapOfCache(userName, friendList)
       }
+
+      def putPageOwnerList(userName:String,pageOwnerList:List[String]){
+        cache_actor ! AddToPageOwnerListMapOfCache(userName, pageOwnerList)
+      }
     
   }
 
@@ -383,4 +457,5 @@ object JsonUtil{
   def toJson(profileMap:ProfileMapForAll) : String = writePretty(profileMap)
   def toJson(post:Post) : String = writePretty(post)
   def toJson(postMapOfAll:PostMapOfAll) : String = writePretty(postMapOfAll)
+  def toJson(friendlist:FriendListMap) : String = writePretty(friendlist)
 }
