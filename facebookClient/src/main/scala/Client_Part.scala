@@ -16,11 +16,9 @@ import java.net.InetAddress
 
 
 case class Start(system : ActorSystem)
-case class Send_createUser(userCount: Int)
+case class Send_createUser(userCount: String , dob:String, gender:String, phoneNumber:String)
 case class Send_getUser(userCount: Int)
-case object Send_getUsersInfo
-case class Send_getAllUsers(start:Int)
-
+case class Send_getAllUsers(userCount:Int)
 case class Send_updateFriendListOfFbUser(userName:Int,friendUserName:Int,action:String)
 
 //case class send(user: Int)
@@ -50,10 +48,26 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   	 case Start(system) => 
   		{
   			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient") 					
-  			for(i <-0 until userCount) 
+  			var gender :  String = ""
+        for(i <-0 until userCount) 
   			{
           println("chutiyapa")
-  			  client_driver ! Send_createUser(i)
+          val rnd = new scala.util.Random
+          val dd = 1 + rnd.nextInt(28)
+          val mm = 1 + rnd.nextInt(12)
+          val yy = 1970 + rnd.nextInt(36)
+          val dob : String = mm.toString+"-"+dd.toString+"-"+yy.toString
+          if(i%2==0){
+            gender = "F"
+          }
+          else{
+            gender = "M"
+            } 
+          val areaCode = 300 + rnd.nextInt(700)
+          val firstPart = 300 + rnd.nextInt(700)
+          val secondPart = 1000 + rnd.nextInt(9000)
+          val phoneNumber : String = "("+areaCode.toString+")"+" "+firstPart.toString+"-"+secondPart.toString
+  			  client_driver ! Send_createUser(i.toString,dob,gender,phoneNumber)
   			}
 
 
@@ -62,7 +76,6 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         client_driver ! Send_getAllUsers(3)
 
         client_driver ! Send_updateFriendListOfFbUser(1,3,"update")
-        //client_driver ! Send_getUsersInfo
         }
   	}
 }
@@ -75,11 +88,11 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
 	def receive = 
   	{
-  		case Send_createUser(userCount) =>
-  		{
+  		case Send_createUser(userCount,dob,gender,phoneNumber) =>
+      {
           println("bpc1....")
-            pipeline1(Post("http://localhost:8080/facebook/createUser/"+userCount))
-  		}
+          pipeline1(Post("http://localhost:8080/facebook/createUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
+      }
 
       case Send_updateFriendListOfFbUser(userName,friendUserName,action) =>
       {
@@ -89,19 +102,10 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
       case Send_getUser(userCount) =>
       {
-           val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileInfoOfUser?userName=facebookUser"+userCount))
+           val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileInfoOfUser/"+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
           }
-      }
-
-      case Send_getUsersInfo =>
-      {
-        println("Send_getUsersInfo")
-        val result = pipeline3(Get("http://localhost:8080/facebook/getProfileInfoOfUsers"))
-        result.foreach { response =>
-          println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-        }
       }
 
       case Send_getAllUsers(userCount) =>

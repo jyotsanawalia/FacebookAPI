@@ -32,10 +32,10 @@ import spray.http._
 import spray.routing.{Route, RequestContext}
 import spray.routing.directives._
 
-case class Profile(userName: String,ageOfUser: Int) extends Serializable
+case class Profile(userName: String,dob: String, gender:String, phoneNumber:String, emailId:String, image : String) extends Serializable
 case class ProfileList(profileList : ArrayBuffer[Profile])
 case class ProfileInfo(userName:String,profileObject:Profile) extends Serializable
-case class SetProfileInfoOfUser(userCount: Int)
+case class SetProfileInfoOfUser(userCount: Int,dob:String,gender:String, phoneNumber:String)
 case class GetProfileInfoOfUser(userName:String)
 
 case class ProfileMap(userName: String, profileObject : Profile)
@@ -64,51 +64,22 @@ object FacebookServer extends App with SimpleRoutingApp
 	  println("Facebook Server Started....")
     val cache_actor = system.actorOf(Props[CacheMaster], name="cache_actor")
     println("here")
-   // val server_actor = system.actorOf(Props[FacebookUser], name="server_part")
-     
-    // lazy val createUserForFb = post {
-    //       path("facebook" / "createUser") {
-    //         println("bp1....")
-    //         parameters("userCount".as[Int]) { (userCount) =>
-    //         val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+userCount) 
-    //        // println(facebookUser_actor)
-    //         facebookUser_actor!SetProfileInfoOfUser(userCount)
-    //           complete {
-    //             "rank of users="+userCount
-    //           }
-    //         }
-    //       }
-    //     }
 
-
-        lazy val createUserForFb = post {
-          path("facebook" / "createUser" / Segment) { userCount1 =>
-            var userCount = userCount1.toInt
-            val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+userCount) 
-           // println(facebookUser_actor)
-            facebookUser_actor!SetProfileInfoOfUser(userCount)
-              complete {
-                "rank of users="+userCount
-              }
+         lazy val createUserForFb = post {
+          path("facebook" / "createUser") {
+            println("bp1....")
+                entity(as[FormData]) { fields =>
+                    println("Fields = " + fields)
+                    val userId = fields.fields(0)._2
+                    val dob= fields.fields(1)._2
+                    val gender = fields.fields(2)._2
+                    val phoneNumber = fields.fields(3)._2
+                    val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+userId) 
+                    facebookUser_actor!SetProfileInfoOfUser(userId.toInt,dob,gender,phoneNumber)
+                    complete("Done")
             }
           }
-        
-
-// lazy val createUserForFb = path("facebook" / Segment) {
-// userCount =>
-//     post {
-//       println(userCount)
-//       complete {
-//                 "rank of users="+userCount
-//               }
-//         }
-//     }
-
-//     path("profile" / "id" ~ Segment) { segm =>
-//     complete(s"$id") // in the example would return 2314234 as a string
-//   }
-
-
+        }
 
         lazy val updateFriendListOfTheUser = post {
           path("facebook" / "updateFriendListOfFbUser") {
@@ -132,11 +103,11 @@ object FacebookServer extends App with SimpleRoutingApp
           }
         }
 
-
         lazy val profileInfoOfUserOnFb = get {
         respondWithMediaType(MediaTypes.`application/json`)
-              path("facebook" / "getProfileInfoOfUser"){
-                parameters("userName".as[String]) { (userName) =>
+              path("facebook" / "getProfileInfoOfUser"/Segment){ userCount =>
+                val userName = "facebookUser"+userCount
+                //parameters("userName".as[String]) { (userName) =>
                     val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
                    // implicit val timeout =  Timeout(2 seconds)
                    val future = actor ? GetProfileInfoOfUser(userName)
@@ -147,23 +118,6 @@ object FacebookServer extends App with SimpleRoutingApp
                 }
                 
               }
-            }
-
-        lazy val profileInfoOfUsers = get {
-          respondWithMediaType(MediaTypes.`application/json`)
-          path("facebook"/"getProfileInfoOfUsers"){
-            //parameters("numberOfUsers".as[Int]){ (numberOfUsers) =>
-              //implicit val timeout =  Timeout(2 seconds)
-              println("profileInfoOfUsers")
-              println("cache_actor "+cache_actor)
-              val future = cache_actor ? GetProfileMap 
-              val profileList = Await.result(future,timeout.duration).asInstanceOf[ProfileList]
-              complete{
-                JsonUtil.toJson(profileList)
-              }
-            }
-          }
-        
 
         lazy val getAllProfileInfoOfUserOnFb = get {
         respondWithMediaType(MediaTypes.`application/json`)
@@ -188,7 +142,6 @@ object FacebookServer extends App with SimpleRoutingApp
         createUserForFb ~
         updateFriendListOfTheUser ~
         profileInfoOfUserOnFb ~
-        profileInfoOfUsers ~
         getAllProfileInfoOfUserOnFb
         
          }
@@ -205,27 +158,12 @@ object FacebookServer extends App with SimpleRoutingApp
     {
       case ProfileMap(userName, profileObject)=>
       {
-        //println("ProfileMap inside CacheMaster")
         profileMapForAllUsers += (userName -> profileObject)
-        //for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
       }
 
       case GetProfileMap=>
       {
         println("GetProfileMap inside CacheMaster")
-        // for ((k,v) <- profileMapForAllUsers){
-        //   profileList += v
-        //   println("v : "+v+"\t profileList"+profileList)
-        // }
-        // //println(profileList)
-        // println("ok")
-        // for(i<-0 until profileList.length)
-        //         println("profileList(i) = "+profileList(i))
-        // println("ok again")
-        //val profileListObject = ProfileList(profileMapForAllUsers)
-       // sender ! profileListObject
-        //val profileList = new ArrayBuffer[Profile]()
-        //for ((k,v) <- profileMapForAllUsers) println("key:"+k+"\tvalue:"+v)
          for(i<-0 until profileMapForAllUsers.size){
           var userName : String = "facebookUser"+i
            var profileObject = profileMapForAllUsers.get(userName) match{
@@ -234,11 +172,8 @@ object FacebookServer extends App with SimpleRoutingApp
                println("profileObject: "+profileObject)
                profileList += profileObject
              }
-             case None => Profile("Error",0)
+             case None => Profile("Error","Error","Error","Error","Error","Error")
              }
-             //profileList += profileObject
-        // }
-        // println("yay")
       }
       val profileListObject = ProfileList(profileList)
       sender ! profileListObject
@@ -268,28 +203,36 @@ object FacebookServer extends App with SimpleRoutingApp
     val writer = new FileWriter("Server_Output.txt",true )
     var profileMap = new scala.collection.mutable.HashMap[String, Profile]()
     var userName:String = ""
-    var ageOfUser:Int = 0
+    var emailId : String = ""
+    var isPage : Int = 0
+    var image : String = "C:-Users-jyotsana-Desktop-FacebookAPI-facebookHelper-photo.jpg"
     var friendList : List[String] = List[String]()
     var friendCount : Int = 0
     def receive = 
       {    
-        //FOLLOWING LIST AND TWEETSTORE
-        case SetProfileInfoOfUser(userCount)=>
+        case SetProfileInfoOfUser(userCount,dob,gender,phoneNumber)=>
           {    
-          println("bp2....")
-          userName = "facebookUser"+userCount;
-          ageOfUser = userCount
-          println("Username is" + userName);
-          println("ageOfUser is" + ageOfUser);
-          val profileObj = Profile(userName,ageOfUser)
-          putProfile(userName,profileObj)       
+            println("bp2....")
+            userName = "facebookUser"+userCount;
+            emailId = userName+"@gmail.com"
+            println("Username is : " + userName);
+            println("Date Of Birth of user is : " + dob);
+            println("Gender is : "+gender)
+            println("Phone Number is : "+phoneNumber)
+            val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image)
+            putProfile(userName,profileObj)       
           }
+
+          // case SetProfileInfoOfPage()
+          // {
+
+          // }
 
       case GetProfileInfoOfUser(userName)=>
         { 
           val profileObject = profileMap.get(userName) match{
           case Some(profileObject) => profileObject
-          case None => Profile("Error",0)
+          case None => Profile("Error","Error","Error","Error","Error","Error")
           }
           sender ! profileObject
         } 
