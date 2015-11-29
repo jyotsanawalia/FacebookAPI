@@ -66,10 +66,24 @@ object FacebookServer extends App with SimpleRoutingApp
     println("here")
    // val server_actor = system.actorOf(Props[FacebookUser], name="server_part")
      
-    lazy val createUserForFb = post {
-          path("facebook" / "createUser") {
-            println("bp1....")
-            parameters("userCount".as[Int]) { (userCount) =>
+    // lazy val createUserForFb = post {
+    //       path("facebook" / "createUser") {
+    //         println("bp1....")
+    //         parameters("userCount".as[Int]) { (userCount) =>
+    //         val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+userCount) 
+    //        // println(facebookUser_actor)
+    //         facebookUser_actor!SetProfileInfoOfUser(userCount)
+    //           complete {
+    //             "rank of users="+userCount
+    //           }
+    //         }
+    //       }
+    //     }
+
+
+        lazy val createUserForFb = post {
+          path("facebook" / "createUser" / Segment) { userCount1 =>
+            var userCount = userCount1.toInt
             val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+userCount) 
            // println(facebookUser_actor)
             facebookUser_actor!SetProfileInfoOfUser(userCount)
@@ -78,7 +92,23 @@ object FacebookServer extends App with SimpleRoutingApp
               }
             }
           }
-        }
+        
+
+// lazy val createUserForFb = path("facebook" / Segment) {
+// userCount =>
+//     post {
+//       println(userCount)
+//       complete {
+//                 "rank of users="+userCount
+//               }
+//         }
+//     }
+
+//     path("profile" / "id" ~ Segment) { segm =>
+//     complete(s"$id") // in the example would return 2314234 as a string
+//   }
+
+
 
         lazy val updateFriendListOfTheUser = post {
           path("facebook" / "updateFriendListOfFbUser") {

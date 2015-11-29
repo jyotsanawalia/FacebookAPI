@@ -78,7 +78,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   		case Send_createUser(userCount) =>
   		{
           println("bpc1....")
-            pipeline1(Post("http://localhost:8080/facebook/createUser?userCount="+userCount))
+            pipeline1(Post("http://localhost:8080/facebook/createUser/"+userCount))
   		}
 
       case Send_updateFriendListOfFbUser(userName,friendUserName,action) =>
