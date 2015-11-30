@@ -119,9 +119,9 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         client_driver ! Send_getAllPosts(3)
         //Image creation apis
 
-        client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
-        client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
-        client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
+        //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
+        //client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
+        //client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
         
         //client_driver ! Send_getAllAlbumsOfUser(1)
 

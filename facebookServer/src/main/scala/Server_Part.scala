@@ -71,10 +71,13 @@ case class UserPostMap(postMap:HashMap[String,Post])
 case class GetPostOfUser(username:String)
 
 
+
 //albums
 case class CreateAlbum(imageContent:String,imageId:String,albumId:String)
 case class ImagePost(author: String,imageContent: String) extends Serializable
 case class ImageMapAsAlbumForTheUser(albumName:String, imageMapForTheUser:HashMap[String,ImagePost])
+case class GetAlbumOfUser(userName:String)
+case class AlbumMap(albumMap:HashMap[String,HashMap[String,ImagePost]])
 
 object FacebookServer extends App with SimpleRoutingApp
 { 
@@ -300,6 +303,20 @@ object FacebookServer extends App with SimpleRoutingApp
                 }
               }
 
+            lazy val getAllAlbumsOfUser = get{
+            respondWithMediaType(MediaTypes.`application/json`)
+                path("facebook"/"getAllAlbumsOfUser"/Segment){  userCount =>
+                  println("getAllAlbumsOfUser")
+                  val userName = "facebookUser"+userCount
+                  val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
+                  val future = actor ? GetAlbumOfUser(userName)
+                  val albumMapOfUser = Await.result(future, timeout.duration).asInstanceOf[AlbumMap]
+                  complete{
+                    JsonUtil.toJson(albumMapOfUser)
+                  }
+                }
+              }          
+
         
 
 
@@ -315,7 +332,8 @@ object FacebookServer extends App with SimpleRoutingApp
           getAllPostsOfUserOnFb ~
           getPostOfUser ~
           likePostOfUser ~
-          addImageToAnAlbum
+          addImageToAnAlbum ~
+          getAllAlbumsOfUser
 
          }
        }
@@ -420,6 +438,9 @@ object FacebookServer extends App with SimpleRoutingApp
         sender ! UserPostMap(postMap)
       }
 
+
+
+
     }
   }
 //}
@@ -435,9 +456,6 @@ object FacebookServer extends App with SimpleRoutingApp
     var image : String = "C:-Users-jyotsana-Desktop-FacebookAPI-facebookHelper-photo.jpg"
     var friendList : List[String] = List[String]()
     var friendCount : Int = 0
-    //var likeCount : Int = 0
-    //var shareCount : Int = 0
-    //var contentOfPost : String =""
 
     var listOfPosts = List[Post]()
     var postMapForTheUser = new scala.collection.mutable.HashMap[String, Post]()
@@ -542,6 +560,12 @@ object FacebookServer extends App with SimpleRoutingApp
           val imageObj = ImagePost(userName,imageContent)
           putImageToMapAndCache(userName,imageObj,imageId,albumId)       
           }
+
+        case GetAlbumOfUser(userName) => {
+        println("inside cache - GetAlbumOfUser")
+        sender ! AlbumMap(imageMapAsAlbumForTheUser)
+        }
+
       }
      
       def putProfile(userName :String,profileObj:Profile){
@@ -563,7 +587,12 @@ object FacebookServer extends App with SimpleRoutingApp
       def putImageToMapAndCache(userName:String,imageObj:ImagePost,imageId:String,albumId:String){
         //println("putImageToMapAndLocalDisk in:")
         transferImagesBetweenClientAndServer(userName,imageObj.imageContent,albumId,imageId)
-        imageMapAsAlbumForTheUser += (albumId -> HashMap(imageId -> imageObj))
+        var imageMap = imageMapAsAlbumForTheUser.get(albumId) match{
+                  case Some(imageMap) => imageMap
+                  case None => HashMap(imageId -> imageObj)
+                }
+        imageMap += (imageId -> imageObj)
+        imageMapAsAlbumForTheUser += (albumId -> imageMap)
         //for ((k,v) <- imageMapAsAlbumForTheUser) {
           //  println("key:"+k+"\tvalue:"+v)
         //  //println(v mkString "\n")
@@ -594,6 +623,9 @@ object FacebookServer extends App with SimpleRoutingApp
       def putPageOwnerList(userName:String,pageOwnerList:List[String]){
         cache_actor ! AddToPageOwnerListMapOfCache(userName, pageOwnerList)
       }
+
+      
+
     
   }
 
@@ -608,5 +640,6 @@ object JsonUtil{
   def toJson(postMapOfAll:PostMapOfAll) : String = writePretty(postMapOfAll)
   def toJson(friendlist:FriendListMap) : String = writePretty(friendlist)
   def toJson(userPostsHashMap:UserPostMap) : String = writePretty(userPostsHashMap)
+  def toJson(albumMap:AlbumMap) : String = writePretty(albumMap)
 
 }
