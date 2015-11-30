@@ -30,7 +30,7 @@ case class Send_createPage(userCount: String , dob:String, gender:String, phoneN
 case class Send_getAllFriendsOfUser(userCount:Int)
 case class Send_likePost(authorId: String, postId: String, actionUserId: String)
 case class Send_SharePost(authorId: String, postId: String, actionUserId: String)
-case class Send_GetPostOfUser(userCount:Int)
+case class Send_GetPostOfUser(authorId: String, actionUserId: String)
 //case class send(user: Int)
 //case class stopChk(start: Long)
 
@@ -115,7 +115,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
 
         //client_driver ! Send_getAllFriendsOfUser(1)
         //client_driver ! Send_likePost("3","1","1")
-        //client_driver ! Send_GetPostOfUser(3)
+        client_driver ! Send_getAllPosts(3)
+        client_driver ! Send_GetPostOfUser("1","3")
 
         //client_driver ! Send_getAllPosts(3)
         //Image creation apis
@@ -124,8 +125,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
 
-        client_driver ! Send_SharePost("3","1","1")
-        client_driver ! Send_getAllPosts(3)
+        //client_driver ! Send_SharePost("3","1","1")
+        //client_driver ! Send_getAllPosts(3)
 
         
         //client_driver ! Send_getAllAlbumsOfUser(1)
@@ -230,10 +231,10 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
         }
       }
-      case Send_GetPostOfUser(userCount)=>
+      case Send_GetPostOfUser(authorId,actionUserId)=>
       {  
         println("Send_GetPostOfUser")
-        val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser/"+userCount))
+        val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser",FormData(Seq("field1"->authorId, "field2"->actionUserId))))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
         }
