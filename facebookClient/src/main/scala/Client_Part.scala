@@ -24,6 +24,7 @@ case class Send_updateFriendListOfFbUser(userName:Int,friendUserName:Int,action:
 case class Send_createPost(userCount:String,content:String,postId:String)
 case class Send_createPage(userCount: String , dob:String, gender:String, phoneNumber:String)
 case class Send_getAllFriendsOfUser(userCount:Int)
+case class Send_likePost (authorId: String, postId: String, actionUserId: String)
 //case class send(user: Int)
 //case class stopChk(start: Long)
 
@@ -82,25 +83,25 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //client_driver ! Send_getUser(2)
 
         //client_driver ! Send_getAllUsers(3)
-
+  
             client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
-
             client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
 
-            client_driver ! Send_getAllFriendsOfUser(1)
-          }
+            
+
         //post creation apis - do not delete them
-        //client_driver ! Send_createPost("3","First post of the User","1")
-        // client_driver ! Send_createPost("3","second post of the User","2")
+        client_driver ! Send_createPost("3","First post of the User","1")
+        client_driver ! Send_createPost("3","second post of the User","2")
         // client_driver ! Send_createPost("2","first post of the thh User","3")
         // client_driver ! Send_createPost("2","second post of the thh User","4")
-
+        client_driver ! Send_getAllFriendsOfUser(1)
+        client_driver ! Send_likePost("3","1","1")
         // client_driver ! Send_getAllPosts(3)
-
+        }
 
         }
   	}
-    
+
 //usercount is nth number of facebook user
 class FacebookAPIClient(system:ActorSystem) extends Actor { 
   import system.dispatcher
@@ -169,6 +170,12 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
         }
+      }
+
+      case Send_likePost(authorId, postId, actionUserId) =>
+      {
+        println("LikePost")
+        pipeline1(Post("http://localhost:8080/facebook/likePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
       }
     }
 }

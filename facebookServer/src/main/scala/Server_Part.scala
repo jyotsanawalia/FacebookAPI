@@ -6,6 +6,8 @@ import scala.collection.mutable._
 import spray.routing.SimpleRoutingApp
 import scala.util.Random
 import java.io._
+import java.util.Date
+import java.util.{Date, Locale}
 
 import scala.util.{Success, Failure}
 
@@ -57,12 +59,13 @@ case class GetFriendListOfUser(userName:String)
 case class AddToPageOwnerListMapOfCache(userName:String, pageOwnerList:List[String])
 
 //posts
-case class Post(author: String,content: String) extends Serializable
+case class Post(author: String,content: String,likeCount: Int,shareCount: Int) extends Serializable
 case class PostMapForTheUser(postMap:HashMap[String,Post])
 case class CreatePost(content:String,postId:String)
 case class PostMapOfAll(postMapOfAll:HashMap[String,HashMap[String,Post]])
 case class GetPostMapOfAllUsers(start:Int,limit:Int)
 case class PostMapForAll(userName:String, postMapForTheUser:HashMap[String,Post])
+case class LikePost(postId:String, actionUserId:Int)
 
 object FacebookServer extends App with SimpleRoutingApp
 { 
@@ -77,11 +80,11 @@ object FacebookServer extends App with SimpleRoutingApp
 
 	  println("Facebook Server Started....")
     val cache_actor = system.actorOf(Props[CacheMaster], name="cache_actor")
-    println("here")
+    //println("here")
 
          lazy val createUserForFb = post {
           path("facebook" / "createUser") {
-            println("bp1....")
+            //println("bp1....")
                 entity(as[FormData]) { fields =>
                     //println("Fields = " + fields)
                     val userId = fields.fields(0)._2
@@ -179,7 +182,7 @@ object FacebookServer extends App with SimpleRoutingApp
         respondWithMediaType(MediaTypes.`application/json`)
               path("facebook" / "getProfileOfAllFacebookUsers"){
                 parameters("start".as[Int]) { (start) =>
-                  println("here1")                  
+                  //println("here1")                  
                    val future = cache_actor ? GetProfileMapOfAllUsers(start,10)
                    val userProfileHashMap = Await.result(future, timeout.duration).asInstanceOf[ProfileMapForAll]
                    complete{ 
@@ -207,14 +210,14 @@ object FacebookServer extends App with SimpleRoutingApp
 
           lazy val createPost = post {
           path("facebook" / "createPost") {
-            println("bp6....")
+            //println("bp6....")
                 entity(as[FormData]) { fields =>
                     println("In the post Creation spray server")
                       val authorUserName = fields.fields(0)._2
                       val postContent = fields.fields(1)._2
                       val postId = fields.fields(2)._2
                       //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
-                      val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"++authorUserName)
+                      val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"+authorUserName)
                       facebookUser_actor ! CreatePost(postContent,postId)
                       complete("Done")
             }
@@ -239,6 +242,21 @@ object FacebookServer extends App with SimpleRoutingApp
               }
             }
 
+            lazy val likePostOfUser = post {
+              path("facebook"/"likePost"){
+                entity(as[FormData]) { fields =>
+                  println("inside likePostOfUser")
+                  val authorId = fields.fields(0)._2
+                  val postId = fields.fields(1)._2
+                  val actionUserId = fields.fields(2)._2
+                  //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
+                  val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"+authorId)
+                  facebookUser_actor ! LikePost(postId,actionUserId.toInt)
+                  complete("Done")
+                }
+              }
+            }
+
         
 
   	     startServer(interface = "localhost", port = 8080) {
@@ -250,7 +268,8 @@ object FacebookServer extends App with SimpleRoutingApp
           getAllProfileInfoOfUserOnFb ~
           getFriendListOfUser ~
           createPost ~
-          getAllPostsOfUserOnFb
+          getAllPostsOfUserOnFb ~
+          likePostOfUser
 
          }
        }
@@ -288,7 +307,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
       case GetProfileMap=>
       {
-        println("GetProfileMap inside CacheMaster")
+        //println("GetProfileMap inside CacheMaster")
          for(i<-0 until profileMapForAllUsers.size){
           var userName : String = "facebookUser"+i
            var profileObject = profileMapForAllUsers.get(userName) match{
@@ -306,7 +325,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
       case GetProfileMapOfAllUsers(start,limit)=>
       {
-      println("Here too")  
+      //println("Here too")  
       sender ! ProfileMapForAll(profileMapForAllUsers)
       }  
 
@@ -357,6 +376,9 @@ object FacebookServer extends App with SimpleRoutingApp
     var image : String = "C:-Users-jyotsana-Desktop-FacebookAPI-facebookHelper-photo.jpg"
     var friendList : List[String] = List[String]()
     var friendCount : Int = 0
+    //var likeCount : Int = 0
+    //var shareCount : Int = 0
+    //var contentOfPost : String =""
 
     var listOfPosts = List[Post]()
     var postMapForTheUser = new scala.collection.mutable.HashMap[String, Post]()
@@ -416,8 +438,37 @@ object FacebookServer extends App with SimpleRoutingApp
           println("In post Creation")
           println("Username is" + userName);
           println("content is" + content);
-          val postObj = Post(userName,content)
+          //contentOfPost = content
+          //Date datePostCreated = new Date();
+          //datePostCreated = Calendar.getInstance().getTime();
+          val postObj = Post(userName,content,0,0)
           putPostToMapAndCache(userName,postObj,postId)       
+          }
+
+          case LikePost(postId , actionUserId) =>
+          {
+            println("In case LikePost")
+            val actionUserName : String = "facebookUser"+actionUserId
+            if (friendList.contains(actionUserName)){
+              if(postMapForTheUser.contains(postId)){
+                //likeCount = likeCount + 1
+                //println("Like Count :"+likeCount)
+                //val postObj = Post(userName,contentOfPost,likeCount,shareCount)
+                var postObject = postMapForTheUser.get(postId) match{
+          case Some(postObject) => postObject
+          case None => Post("Error","Error",0,0)
+          }     
+                var newPostObj = Post(postObject.author,postObject.content,postObject.likeCount+1,postObject.shareCount)
+                //postObject.likeCount = postObject.likeCount + 1
+                putPostToMapAndCache(userName,newPostObj,postId)
+              }
+              else{
+                println("This post does not belong to author")
+              }
+            }
+            else{
+              println("The user is not present in the friend list of the author. Sorry !!, the user cant like the post of the author.")
+            }
           }
 
       }
@@ -429,7 +480,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
       def putPostToMapAndCache(userName :String,postObj:Post,postId:String){
         println("putPostToMapAndCache in:")
-        listOfPosts = listOfPosts ::: List(postObj)
+        //listOfPosts = listOfPosts ::: List(postObj)
         postMapForTheUser += (postId -> postObj)
         for ((k,v) <- postMapForTheUser) {
             println("key:"+k+"\tvalue:"+v)
