@@ -28,7 +28,8 @@ case class Send_getAllAlbumsOfUser(userCount:Int)
 
 case class Send_createPage(userCount: String , dob:String, gender:String, phoneNumber:String)
 case class Send_getAllFriendsOfUser(userCount:Int)
-case class Send_likePost (authorId: String, postId: String, actionUserId: String)
+case class Send_likePost(authorId: String, postId: String, actionUserId: String)
+case class Send_SharePost(authorId: String, postId: String, actionUserId: String)
 case class Send_GetPostOfUser(userCount:Int)
 //case class send(user: Int)
 //case class stopChk(start: Long)
@@ -85,7 +86,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   			}
 
 
-        client_driver ! Send_getUser(2)
+        //client_driver ! Send_getUser(2)
 
         //client_driver ! Send_getAllUsers(3)
   
@@ -100,7 +101,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
          client_driver ! Send_createPost("3","First post of the User","1")
          client_driver ! Send_createPost("3","second post of the User","2")
 
-         client_driver ! Send_getAllFriendsOfUser(1)
+         //client_driver ! Send_getAllFriendsOfUser(1)
 
             //post creation apis - do not delete them
         //client_driver ! Send_createPost("3","First post of the User","1")
@@ -110,18 +111,22 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //client_driver ! Send_createPost("2","second post of the thh User","4")
 
         //client_driver ! Send_getAllFriendsOfUser(1)
-        client_driver ! Send_likePost("3","1","1")
+        //client_driver ! Send_likePost("3","1","1")
 
         //client_driver ! Send_getAllFriendsOfUser(1)
         //client_driver ! Send_likePost("3","1","1")
-        client_driver ! Send_GetPostOfUser(3)
+        //client_driver ! Send_GetPostOfUser(3)
 
-        client_driver ! Send_getAllPosts(3)
+        //client_driver ! Send_getAllPosts(3)
         //Image creation apis
 
         //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
+
+        client_driver ! Send_SharePost("3","1","1")
+        client_driver ! Send_getAllPosts(3)
+
         
         //client_driver ! Send_getAllAlbumsOfUser(1)
 
@@ -204,6 +209,12 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       {
         println("LikePost")
         pipeline1(Post("http://localhost:8080/facebook/likePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
+      }
+
+      case Send_SharePost(authorId, postId, actionUserId) =>
+      {
+        println("Send_SharePost")
+        pipeline1(Post("http://localhost:8080/facebook/sharePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
       }
 
       case Send_createAlbum(userCount,imageContent,imageId,albumId) =>
