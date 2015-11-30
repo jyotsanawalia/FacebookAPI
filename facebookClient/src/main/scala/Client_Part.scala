@@ -29,6 +29,7 @@ case class Send_getAllAlbumsOfUser(userCount:Int)
 case class Send_createPage(userCount: String , dob:String, gender:String, phoneNumber:String)
 case class Send_getAllFriendsOfUser(userCount:Int)
 case class Send_likePost (authorId: String, postId: String, actionUserId: String)
+case class Send_GetPostOfUser(userCount:Int)
 //case class send(user: Int)
 //case class stopChk(start: Long)
 
@@ -76,7 +77,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
           val secondPart = 1000 + rnd.nextInt(9000)
           val phoneNumber : String = "("+areaCode.toString+")"+" "+firstPart.toString+"-"+secondPart.toString
   			  if(i%10 == 0){
-            //client_driver ! Send_createPage(i.toString,dob,gender,phoneNumber)
+            client_driver ! Send_createPage(i.toString,dob,gender,phoneNumber)
           }
           else{
             client_driver ! Send_createUser(i.toString,dob,gender,phoneNumber)
@@ -84,20 +85,20 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   			}
 
 
-        //client_driver ! Send_getUser(2)
+        client_driver ! Send_getUser(2)
 
-        //client_driver ! Send_getAllUsers(3)
+        client_driver ! Send_getAllUsers(3)
   
-            // client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
-            // client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
+        client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
+        client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
 
 
             
 
         //post creation apis - do not delete them
         
-        // client_driver ! Send_createPost("3","First post of the User","1")
-        // client_driver ! Send_createPost("3","second post of the User","2")
+         client_driver ! Send_createPost("3","First post of the User","1")
+         client_driver ! Send_createPost("3","second post of the User","2")
 
         // client_driver ! Send_getAllFriendsOfUser(1)
 
@@ -105,12 +106,17 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //client_driver ! Send_createPost("3","First post of the User","1")
         // client_driver ! Send_createPost("3","second post of the User","2")
 
-        // client_driver ! Send_createPost("2","first post of the thh User","3")
-        // client_driver ! Send_createPost("2","second post of the thh User","4")
+        client_driver ! Send_createPost("2","first post of the thh User","3")
+        client_driver ! Send_createPost("2","second post of the thh User","4")
+
+        client_driver ! Send_getAllFriendsOfUser(1)
+        client_driver ! Send_likePost("3","1","1")
+
         //client_driver ! Send_getAllFriendsOfUser(1)
         //client_driver ! Send_likePost("3","1","1")
+        client_driver ! Send_GetPostOfUser(3)
 
-        // client_driver ! Send_getAllPosts(3)
+        client_driver ! Send_getAllPosts(3)
         //Image creation apis
 
         client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
@@ -213,6 +219,15 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
         }
       }
+      case Send_GetPostOfUser(userCount)=>
+      {  
+        println("Send_GetPostOfUser")
+        val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser/"+userCount))
+        result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+        }
+      }
+
     }
 }
 //}
