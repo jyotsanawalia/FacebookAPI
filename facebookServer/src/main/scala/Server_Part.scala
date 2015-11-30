@@ -109,7 +109,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
         lazy val createPageForFb = post {
           path("facebook" / "createPage") {
-            //println("bp7....")
+            println("bp7....")
                 entity(as[FormData]) { fields =>
                     //println("Fields = " + fields)
                     val userId = fields.fields(0)._2
@@ -307,6 +307,7 @@ object FacebookServer extends App with SimpleRoutingApp
           createUserForFb ~
           updateFriendListOfTheUser ~
           profileInfoOfUserOnFb ~
+          createPageForFb ~
           //profileInfoOfUsers ~
           getAllProfileInfoOfUserOnFb ~
           getFriendListOfUser ~
@@ -454,10 +455,10 @@ object FacebookServer extends App with SimpleRoutingApp
             //println("bp2....")
             userName = "facebookUser"+userCount;
             emailId = userName+"@gmail.com"
-            //println("Username is : " + userName);
-            //println("Date Of Birth of user is : " + dob);
-            //println("Gender is : "+gender)
-            //println("Phone Number is : "+phoneNumber)
+            println("Username is : " + userName);
+            println("Date Of Birth of user is : " + dob);
+            println("Gender is : "+gender)
+            println("Phone Number is : "+phoneNumber)
             val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image,isPage)
             putProfile(userName,profileObj)       
           }
@@ -468,11 +469,11 @@ object FacebookServer extends App with SimpleRoutingApp
             isPage = 1
             userName = "facebookPage"+userCount;
             emailId = userName+"@gmail.com"
-            //println("Page name is : " + userName);
-            //println("Date Of Birth of user is : " + dob);
-            //println("Gender is : "+gender)
-            //println("Phone Number is : "+phoneNumber)
-            //println("isPage : "+isPage)
+            println("Page name is : " + userName);
+            println("Date Of Birth of user is : " + dob);
+            println("Gender is : "+gender)
+            println("Phone Number is : "+phoneNumber)
+            println("isPage : "+isPage)
             var pageOwnerList = List("facebookUser1", "facebookUser2", "facebookUser3", "facebookUser4", "facebookUser5")
             val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image,isPage)
             putProfile(userName,profileObj)

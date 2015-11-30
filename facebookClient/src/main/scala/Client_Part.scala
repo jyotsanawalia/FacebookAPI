@@ -40,7 +40,7 @@ object FacebookClient
   {
 	  val system = ActorSystem("ClientSystem")
 	  //println("How many Users?")
-	  val numOfUsers = 15
+	  val numOfUsers = 11
 	  val client_actor =system.actorOf(Props(new FacebookAPISimulator(system,numOfUsers)),name="FacebookAPISimulator")
 	 // val receiver =system.actorOf(Props(new clientReceiver()),name="ClientReceiver")
 	  client_actor ! Start(system)
@@ -87,7 +87,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
 
         client_driver ! Send_getUser(2)
 
-        client_driver ! Send_getAllUsers(3)
+        //client_driver ! Send_getAllUsers(3)
   
         client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
         client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
@@ -100,16 +100,16 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
          client_driver ! Send_createPost("3","First post of the User","1")
          client_driver ! Send_createPost("3","second post of the User","2")
 
-        // client_driver ! Send_getAllFriendsOfUser(1)
+         client_driver ! Send_getAllFriendsOfUser(1)
 
             //post creation apis - do not delete them
         //client_driver ! Send_createPost("3","First post of the User","1")
         // client_driver ! Send_createPost("3","second post of the User","2")
 
-        client_driver ! Send_createPost("2","first post of the thh User","3")
-        client_driver ! Send_createPost("2","second post of the thh User","4")
+        //client_driver ! Send_createPost("2","first post of the thh User","3")
+        //client_driver ! Send_createPost("2","second post of the thh User","4")
 
-        client_driver ! Send_getAllFriendsOfUser(1)
+        //client_driver ! Send_getAllFriendsOfUser(1)
         client_driver ! Send_likePost("3","1","1")
 
         //client_driver ! Send_getAllFriendsOfUser(1)
@@ -149,7 +149,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
       case Send_createPage(userCount,dob,gender,phoneNumber) =>
       {
-          //println("inside Send_createPage")
+          println("inside Send_createPage")
           pipeline1(Post("http://localhost:8080/facebook/createPage",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
       }
 
