@@ -60,10 +60,16 @@ object FacebookHelper
     // ImageIO.write(photo1, "jpg", new File("test1.jpg"))
 
     //code to directly copy files
+    var dir = new File("TestDirectory");
+     
+    // attempt to create the directory here
+    var successful:Boolean  = dir.mkdir();
     val src = new File("photo.jpg")
-    val dest = new File("test.jpg")
+    val dest = new File("TestDirectory/test.jpg")
+    if(successful){
     new FileOutputStream(dest) getChannel() transferFrom(
     new FileInputStream(src) getChannel, 0, Long.MaxValue )
+    }
 
 	  //val client_actor =system.actorOf(Props(new FacebookAPISimulator(system,numOfUsers)),name="ClientActor")
 	  //client_actor ! Start(system)
