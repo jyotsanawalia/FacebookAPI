@@ -12,6 +12,8 @@ import scala.concurrent.duration._
 import akka.routing.RoundRobinRouter
 import java.net.InetAddress
 
+import java.io.{File,FileInputStream,FileOutputStream}
+import java.io.FileWriter;
 //import scala.concurrent.ExecutionContext.Implicits.global
 
 
@@ -57,6 +59,9 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   	{       
   	 case Start(system) => 
   		{
+        var pw13 = new FileWriter("client_log.txt",true)
+        pw13.write("Hello, welcome to client!! \n") 
+        pw13.close()
   			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient") 					
   			var gender :  String = ""
         for(i <-0 until userCount) 
@@ -86,14 +91,16 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   			}
 
 
-        //client_driver ! Send_getUser(2)
+        client_driver ! Send_getUser(2)
 
         //client_driver ! Send_getAllUsers(3)
   
         client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
         client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
+        client_driver ! Send_getAllFriendsOfUser(1)
 
-
+        //client_driver ! Send_updateFriendListOfFbUser(1,4,"delete")
+        //client_driver ! Send_getAllFriendsOfUser(1)
             
 
         //post creation apis - do not delete them
@@ -151,6 +158,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       {
           println("bpc1....")
           pipeline1(Post("http://localhost:8080/facebook/createUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
+                
       }
 
       case Send_createPage(userCount,dob,gender,phoneNumber) =>
@@ -177,6 +185,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
            val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileInfoOfUser/"+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
           }
       }
 
@@ -185,7 +194,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
            val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileOfAllFacebookUsers?start="+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           //println(s"Request completed with status ${response.status} and content:\n${response.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
           }
       }
 
@@ -194,7 +203,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
            val result =  pipeline5(Get("http://localhost:8080/facebook/getPostsOfAllFacebookUsers?start="+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           //println(s"Request completed with status ${response.status} and content:\n${response.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
           }
       }
 
@@ -203,6 +212,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         val result = pipeline1(Get("http://localhost:8080/facebook/getAllFriendsOfUser/"+userCount))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
         }
       }
 
@@ -229,6 +239,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         val result = pipeline1(Get("http://localhost:8080/facebook/getAllAlbumsOfUser/"+userCount))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
         }
       }
       case Send_GetPostOfUser(authorId,actionUserId)=>
@@ -237,10 +248,18 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser",FormData(Seq("field1"->authorId, "field2"->actionUserId))))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
         }
       }
 
     }
+
+  def writeToLog(content :String){ 
+        var pw = new FileWriter("client_log.txt",true)
+        pw.write(content)
+        pw.close()
+  }  
+
 }
 //}
 	
