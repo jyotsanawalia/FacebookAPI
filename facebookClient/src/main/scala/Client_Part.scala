@@ -73,6 +73,11 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         pw13.close()
 
         startTime = System.currentTimeMillis()
+        var weightToRead = 0.5
+        var weightToLike = 0.03
+        var weighToPost = 0.04
+        var weightToPostPicture = 0.03
+
   			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient") 					
   			var gender :  String = ""
         for(i <-0 until userCount) 
@@ -100,30 +105,63 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
             client_driver ! Send_createUser(i.toString,dob,gender,phoneNumber)
           }
   			}
+        var numberToScale :Int = numOfUsers
+        if(numOfUsers > 100){
+          numberToScale = 100
+        }
 
 
-        //client_driver ! Send_getUser(2)
+        client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
+        client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
 
-        //client_driver ! Send_getAllUsers(3)
-  
+        var arrayOfUser = new ArrayBuffer[Int]()
+        var i:Int = 4
+        while (i+1 < numberToScale){
+         for(a <- 1 until 3){
+              client_driver ! Send_updateFriendListOfFbUser(i.toString,a.toString,"connect")
+         } 
+          arrayOfUser += arrayOfUser
+          i = i+8
+        }
 
-        
-        
+        client_driver ! Send_createPost("3","First post of the User","1")
+        client_driver ! Send_createPost("3","second post of the User","2")
+        client_driver ! Send_createPost("2","first post of the thh User","3")
+        client_driver ! Send_createPost("2","second post of the thh User","4")
 
-        client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
-        client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
-       // client_driver ! Send_getAllFriendsOfUser(1)
+        i = 1
+        for(user in arrayOfUser){
+              client_driver ! Send_createPost(user.toString,"Post is about distributed operating system," + i +" numbered post!","post"+i.toString)
+              i++
+        }
+
+        client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
+        client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
+        client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
+
+        client_driver ! Send_likePost("3","1","1")
+        client_driver ! Send_SharePost("3","1","1")
+
+
+        // Simulation ends , below are all the sample get APIS // refer to client_log.txt
+        client_driver ! Send_getUser(2)
+        client_driver ! Send_getAllUsers(3)
+        client_driver ! Send_getAllFriendsOfUser(1)
+        client_driver ! Send_getAllPosts(3)
+        client_driver ! Send_GetPostOfUser("3","1")
+        client_driver ! Send_getAllAlbumsOfUser(1)
+
 
 
         //client_driver ! Send_updateFriendListOfFbUser(1,4,"delete")
         //client_driver ! Send_getAllFriendsOfUser(1)
-          client_driver ! Send_getAllFriendsOfUser(1)
-        client_driver ! Send_getAllFriendsOfUser(3)  
+        //client_driver ! Send_getAllFriendsOfUser(1)
+        //client_driver ! Send_getAllFriendsOfUser(3)  
 
         //post creation apis - do not delete them
         
-         client_driver ! Send_createPost("3","First post of the User","1")
-         client_driver ! Send_createPost("3","second post of the User","2")
+         //client_driver ! Send_createPost("3","First post of the User","1")
+         //client_driver ! Send_createPost("3","second post of the User","2")
 
          //client_driver ! Send_getAllFriendsOfUser(1)
          //client_driver ! Send_getAllFriendsOfUser(3)
@@ -139,24 +177,24 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //client_driver ! Send_likePost("3","1","1")
 
         //client_driver ! Send_getAllFriendsOfUser(1)
-        client_driver ! Send_likePost("3","1","1")
+        //client_driver ! Send_likePost("3","1","1")
 
-        client_driver ! Send_getAllPosts(3)
+        //client_driver ! Send_getAllPosts(3)
 
-        client_driver ! Send_GetPostOfUser("3","1")
+        //client_driver ! Send_GetPostOfUser("3","1")
 
         //client_driver ! Send_getAllPosts(3)
         //Image creation apis
 
-        client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
+        //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
 
-        client_driver ! Send_SharePost("3","1","1")
+        //client_driver ! Send_SharePost("3","1","1")
         //client_driver ! Send_getAllPosts(3)
 
         
-        client_driver ! Send_getAllAlbumsOfUser(1)
+        //client_driver ! Send_getAllAlbumsOfUser(1)
 
         //context.system.shutdown()
 
