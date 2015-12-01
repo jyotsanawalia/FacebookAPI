@@ -160,27 +160,30 @@ object FacebookServer extends App with SimpleRoutingApp
 
         lazy val updateFriendListOfTheUser = post {
           path("facebook" / "updateFriendListOfFbUser") {
-            //println("bp1....")
-            parameters("userName".as[String],"friendUserName".as[String],"action".as[String]) { (userName,friendUserName,action) =>
-            var pw3 = new FileWriter("server_log.txt",true)
-            pw3.write("Hello, updateFriendListOfTheUser \n")
-            pw3.close()
-            val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+userName)
-            val facebookFriend_actor = system.actorSelection("akka://facebookAPI/user/"+friendUserName)
-            var friendList = List("facebookUser1", "facebookUser2", "facebookUser3", "facebookUser4", "facebookUser5")
-            var friendListOfUser : List[String] = List[String]()
-            var friendListOfFriend : List[String] = List[String]()
+            println("bp1....updateFriendListOfTheUser")
+            entity(as[FormData]) { fields =>
+              val userName = "facebookUser"+fields.fields(0)._2
+              val friendUserName = "facebookUser"+fields.fields(1)._2
+              val action = fields.fields(2)._2
+              var pw3 = new FileWriter("server_log.txt",true)
+              pw3.write("Hello, updateFriendListOfTheUser \n")
+              pw3.close()
+              val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+userName)
+              val facebookFriend_actor = system.actorSelection("akka://facebookAPI/user/"+friendUserName)
+              var friendList = List("facebookUser1", "facebookUser2", "facebookUser3", "facebookUser4", "facebookUser5")
+              var friendListOfUser : List[String] = List[String]()
+              var friendListOfFriend : List[String] = List[String]()
              
-            if(action=="delete"){
+              if(action=="delete"){
                 friendListOfUser = List(friendUserName)
                 friendListOfFriend = List(userName)// subtract here
-            }else if(action == "connect"){
+              }else if(action == "connect"){
                 friendListOfUser = List(friendUserName)
                 friendListOfFriend = List(userName)
-            }
+              }
             
-            facebookUser_actor ! UpdateFriendListOfUser(friendListOfUser,action)
-            facebookFriend_actor ! UpdateFriendListOfUser(friendListOfFriend,action)
+              facebookUser_actor ! UpdateFriendListOfUser(friendListOfUser,action)
+              facebookFriend_actor ! UpdateFriendListOfUser(friendListOfFriend,action)
               complete {
                 "updated for user="+userName
               }
@@ -204,7 +207,6 @@ object FacebookServer extends App with SimpleRoutingApp
                    JsonUtil.toJson(userProfile)//change it
                    }
                 }
-                
               }
 
               lazy val getFriendListOfUser = get {
@@ -225,13 +227,12 @@ object FacebookServer extends App with SimpleRoutingApp
 
         lazy val getAllProfileInfoOfUserOnFb = get {
         respondWithMediaType(MediaTypes.`application/json`)
-              path("facebook" / "getProfileOfAllFacebookUsers"){
-                parameters("start".as[Int]) { (start) =>
+              path("facebook" / "getProfileOfAllFacebookUsers"/Segment){ start =>
                   //println("here1") 
                    var pw6 = new FileWriter("server_log.txt",true)
                    pw6.write("Hello, getAllProfileInfoOfUserOnFb \n")    
                    pw6.close()             
-                   val future = cache_actor ? GetProfileMapOfAllUsers(start,10)
+                   val future = cache_actor ? GetProfileMapOfAllUsers(start.toInt,10)
                    val userProfileHashMap = Await.result(future, timeout.duration).asInstanceOf[ProfileMapForAll]
                    complete{ 
                     //userProfileHashMap
@@ -241,7 +242,7 @@ object FacebookServer extends App with SimpleRoutingApp
                 }
                 
               }
-            }
+            
 
 
           lazy val createPost = post {
@@ -266,13 +267,12 @@ object FacebookServer extends App with SimpleRoutingApp
 
           lazy val getAllPostsOfUserOnFb = get {
               respondWithMediaType(MediaTypes.`application/json`)
-              path("facebook" / "getPostsOfAllFacebookUsers"){
-                parameters("start".as[Int]) { (start) =>
+              path("facebook" / "getPostsOfAllFacebookUsers"/Segment){ start =>
                   //println("in the spray server of get all posts") 
                    var pw8 = new FileWriter("server_log.txt",true)
                    pw8.write("Hello, getAllPostsOfUserOnFb \n")
                    pw8.close()                 
-                   val future = cache_actor ? GetPostMapOfAllUsers(start,10)
+                   val future = cache_actor ? GetPostMapOfAllUsers(start.toInt,10)
                    val userPostsHashMap = Await.result(future, timeout.duration).asInstanceOf[PostMapOfAll]
                    complete{ 
                     //userProfileHashMap
@@ -282,7 +282,7 @@ object FacebookServer extends App with SimpleRoutingApp
                 }
                 
               }
-            }
+            
 
             lazy val likePostOfUser = post {
               path("facebook"/"likePost"){
@@ -477,12 +477,15 @@ object FacebookServer extends App with SimpleRoutingApp
           case Some(friendList) => friendList
           case None => emptyList
           }
-        var friendListMapOfUser = new scala.collection.mutable.HashMap[String,List[String]]()  
+
+          var friendListMapOfUser = new scala.collection.mutable.HashMap[String,List[String]]()
+
           friendListMapOfUser += (userName -> friendList)
         sender ! FriendListMap(friendListMapOfUser)
       }
 
       case GetPostOfUser(userName,actionUserName) => {
+        println("actionUserName : "+actionUserName)
         val friendList : List[String]= userFriendMap.get(userName) match{
           case Some(friendList) => friendList
           case None => emptyList

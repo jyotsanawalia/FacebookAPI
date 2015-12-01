@@ -22,7 +22,7 @@ case class Send_createUser(userCount: String , dob:String, gender:String, phoneN
 case class Send_getUser(userCount: Int)
 case class Send_getAllUsers(userCount:Int)
 case class Send_getAllPosts(userCount:Int)
-case class Send_updateFriendListOfFbUser(userName:Int,friendUserName:Int,action:String)
+case class Send_updateFriendListOfFbUser(userName:String,friendUserName:String,action:String)
 case class Send_createPost(userCount:String,content:String,postId:String)
 
 case class Send_createAlbum(userCount:String,imageContent:String,imageId:String,albumId:String)
@@ -46,7 +46,7 @@ object FacebookClient
 
 	  val system = ActorSystem("ClientSystem")
 	  //println("How many Users?")
-	  var numOfUsers :Int = 100
+	  var numOfUsers :Int = 11
     if(args.length==1){
       numOfUsers = args(0).toInt
       println("the number of facebook users for this system is : " + numOfUsers)
@@ -102,18 +102,23 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   			}
 
 
-        client_driver ! Send_getUser(2)
+        //client_driver ! Send_getUser(2)
 
         //client_driver ! Send_getAllUsers(3)
   
-        client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
-        client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
-        client_driver ! Send_getAllFriendsOfUser(1)
-        client_driver ! Send_getAllFriendsOfUser(3)
+
+        
+        
+
+        client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
+        client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
+       // client_driver ! Send_getAllFriendsOfUser(1)
+
 
         //client_driver ! Send_updateFriendListOfFbUser(1,4,"delete")
         //client_driver ! Send_getAllFriendsOfUser(1)
-            
+          client_driver ! Send_getAllFriendsOfUser(1)
+        client_driver ! Send_getAllFriendsOfUser(3)  
 
         //post creation apis - do not delete them
         
@@ -121,6 +126,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
          client_driver ! Send_createPost("3","second post of the User","2")
 
          //client_driver ! Send_getAllFriendsOfUser(1)
+         //client_driver ! Send_getAllFriendsOfUser(3)
 
             //post creation apis - do not delete them
         //client_driver ! Send_createPost("3","First post of the User","1")
@@ -133,22 +139,24 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //client_driver ! Send_likePost("3","1","1")
 
         //client_driver ! Send_getAllFriendsOfUser(1)
-        //client_driver ! Send_likePost("3","1","1")
-        //client_driver ! Send_getAllPosts(3)
+        client_driver ! Send_likePost("3","1","1")
+
+        client_driver ! Send_getAllPosts(3)
+
         client_driver ! Send_GetPostOfUser("3","1")
 
         //client_driver ! Send_getAllPosts(3)
         //Image creation apis
 
-        //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
+        client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
         //client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
 
-        //client_driver ! Send_SharePost("3","1","1")
+        client_driver ! Send_SharePost("3","1","1")
         //client_driver ! Send_getAllPosts(3)
 
         
-        //client_driver ! Send_getAllAlbumsOfUser(1)
+        client_driver ! Send_getAllAlbumsOfUser(1)
 
         //context.system.shutdown()
 
@@ -220,8 +228,9 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
       case Send_updateFriendListOfFbUser(userName,friendUserName,action) =>
       {
+
           master = sender
-          val result = pipeline1(Post("http://localhost:8080/facebook/updateFriendListOfFbUser?userName=facebookUser"+userName+"&friendUserName=facebookUser"+friendUserName+"&action="+action ))
+          val result = pipeline1(Post("http://localhost:8080/facebook/updateFriendListOfFbUser",FormData(Seq("field1"->userName, "field2"->friendUserName,"field3"->action))))
           result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
@@ -243,7 +252,9 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       case Send_getAllUsers(userCount) =>
       {
            master = sender
-           val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileOfAllFacebookUsers?start="+userCount))
+           
+           val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileOfAllFacebookUsers/"+userCount))
+
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
@@ -253,8 +264,10 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
       case Send_getAllPosts(userCount) =>
       {
+
            master = sender
-           val result =  pipeline5(Get("http://localhost:8080/facebook/getPostsOfAllFacebookUsers?start="+userCount))
+          
+           val result =  pipeline5(Get("http://localhost:8080/facebook/getPostsOfAllFacebookUsers/"+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
