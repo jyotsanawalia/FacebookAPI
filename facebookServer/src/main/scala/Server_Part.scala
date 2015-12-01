@@ -122,7 +122,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
          lazy val createUserForFb = post {
           path("facebook" / "createUser") {
-            //println("bp1....")
+            println("createUser....")
                 entity(as[FormData]) { fields =>
                     //println("Fields = " + fields)
                      var pw1 = new FileWriter("server_log.txt",true)
@@ -415,7 +415,7 @@ object FacebookServer extends App with SimpleRoutingApp
     var pageOwnerMap = new scala.collection.mutable.HashMap[String,List[String]]()
     var postMapForAllUsers = new scala.collection.mutable.HashMap[String,HashMap[String, Post]]()
 
-    var friendListMapOfUser = new scala.collection.mutable.HashMap[String,List[String]]()
+    
     var emptyList : List[String] = List("","","")
     var emptyPostMap = new scala.collection.mutable.HashMap[String,Post]()
 
@@ -477,6 +477,7 @@ object FacebookServer extends App with SimpleRoutingApp
           case Some(friendList) => friendList
           case None => emptyList
           }
+        var friendListMapOfUser = new scala.collection.mutable.HashMap[String,List[String]]()  
           friendListMapOfUser += (userName -> friendList)
         sender ! FriendListMap(friendListMapOfUser)
       }

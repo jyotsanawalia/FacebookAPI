@@ -36,17 +36,25 @@ case class Send_GetPostOfUser(authorId: String, actionUserId: String)
 //case class send(user: Int)
 //case class stopChk(start: Long)
 
+case class TrackHopsWhileLookUpOfEachFile(success:Int)
+
 object FacebookClient 
 {
     private val start:Long=System.currentTimeMillis
     def main(args: Array[String])
   {
+
 	  val system = ActorSystem("ClientSystem")
 	  //println("How many Users?")
-	  val numOfUsers = 11
+	  var numOfUsers :Int = 100
+    if(args.length==1){
+      numOfUsers = args(0).toInt
+      println("the number of facebook users for this system is : " + numOfUsers)
+    }
 	  val client_actor =system.actorOf(Props(new FacebookAPISimulator(system,numOfUsers)),name="FacebookAPISimulator")
 	 // val receiver =system.actorOf(Props(new clientReceiver()),name="ClientReceiver")
 	  client_actor ! Start(system)
+    //system.shutdown()
   }
 }
 
@@ -54,7 +62,8 @@ object FacebookClient
 class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor 
 {
   var clientBuffer= new ArrayBuffer[ActorRef]() 
-  
+  var startTime: Long = 0
+  private var trackingCounter : Int = 0
 	def receive = 
   	{       
   	 case Start(system) => 
@@ -62,6 +71,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         var pw13 = new FileWriter("client_log.txt",true)
         pw13.write("Hello, welcome to client!! \n") 
         pw13.close()
+
+        startTime = System.currentTimeMillis()
   			val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient") 					
   			var gender :  String = ""
         for(i <-0 until userCount) 
@@ -72,11 +83,11 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
           val mm = 1 + rnd.nextInt(12)
           val yy = 1970 + rnd.nextInt(36)
           val dob : String = mm.toString+"-"+dd.toString+"-"+yy.toString
-          if(i%2==0){
-            gender = "F"
+          if(i%3==0){
+            gender = "M"
           }
           else{
-            gender = "M"
+            gender = "F"
             } 
           val areaCode = 300 + rnd.nextInt(700)
           val firstPart = 300 + rnd.nextInt(700)
@@ -98,6 +109,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         client_driver ! Send_updateFriendListOfFbUser(1,3,"connect")
         client_driver ! Send_updateFriendListOfFbUser(1,4,"connect")
         client_driver ! Send_getAllFriendsOfUser(1)
+        client_driver ! Send_getAllFriendsOfUser(3)
 
         //client_driver ! Send_updateFriendListOfFbUser(1,4,"delete")
         //client_driver ! Send_getAllFriendsOfUser(1)
@@ -112,7 +124,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
 
             //post creation apis - do not delete them
         //client_driver ! Send_createPost("3","First post of the User","1")
-        // client_driver ! Send_createPost("3","second post of the User","2")
+        //client_driver ! Send_createPost("3","second post of the User","2")
 
         //client_driver ! Send_createPost("2","first post of the thh User","3")
         //client_driver ! Send_createPost("2","second post of the thh User","4")
@@ -122,8 +134,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
 
         //client_driver ! Send_getAllFriendsOfUser(1)
         //client_driver ! Send_likePost("3","1","1")
-        client_driver ! Send_getAllPosts(3)
-        client_driver ! Send_GetPostOfUser("1","3")
+        //client_driver ! Send_getAllPosts(3)
+        client_driver ! Send_GetPostOfUser("3","1")
 
         //client_driver ! Send_getAllPosts(3)
         //Image creation apis
@@ -138,8 +150,22 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         
         //client_driver ! Send_getAllAlbumsOfUser(1)
 
+        //context.system.shutdown()
 
+        //println("Awesome! Total time taken for the all the search is : " + (System.currentTimeMillis() - startTime) + " milliseconds")  
         }
+
+        case TrackHopsWhileLookUpOfEachFile(success) => {  
+          trackingCounter = trackingCounter + 1
+          println("trackingCounter is" + trackingCounter)
+          println(userCount)
+          if( success == 1 && trackingCounter >= userCount + 8){
+            println("number of apis processed : " + trackingCounter) 
+            println("Awesome!!!!! Total time taken for the all the apis is : " + (System.currentTimeMillis() - startTime) + " milliseconds")  
+            context.system.shutdown()
+          }
+        }
+
       }
   	}
 
@@ -151,105 +177,156 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   val pipeline3 = sendReceive
   val pipeline4 = sendReceive
   val pipeline5 = sendReceive
+  var master: ActorRef = null
 
 	def receive = 
   	{
   		case Send_createUser(userCount,dob,gender,phoneNumber) =>
       {
-          println("bpc1....")
-          pipeline1(Post("http://localhost:8080/facebook/createUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
-                
+          //println("bpc1....")
+          master = sender
+          val result = pipeline1(Post("http://localhost:8080/facebook/createUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
+          result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }     
       }
 
       case Send_createPage(userCount,dob,gender,phoneNumber) =>
       {
-          println("inside Send_createPage")
-          pipeline1(Post("http://localhost:8080/facebook/createPage",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
+          //println("inside Send_createPage")
+          master = sender
+          val result = pipeline1(Post("http://localhost:8080/facebook/createPage",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
+          result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+          }
       }
 
       case Send_createPost(userCount,content,postId) =>
       {
-          println("bpc6....")
-          pipeline1(Post("http://localhost:8080/facebook/createPost",FormData(Seq("field1"->userCount, "field2"->content,"field3"->postId))))
+          //println("bpc6....")
+          master = sender
+          val result = pipeline1(Post("http://localhost:8080/facebook/createPost",FormData(Seq("field1"->userCount, "field2"->content,"field3"->postId))))
+          result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
 
       case Send_updateFriendListOfFbUser(userName,friendUserName,action) =>
       {
-          println("bpc3....")
-          pipeline1(Post("http://localhost:8080/facebook/updateFriendListOfFbUser?userName=facebookUser"+userName+"&friendUserName=facebookUser"+friendUserName+"&action="+action ))
+          master = sender
+          val result = pipeline1(Post("http://localhost:8080/facebook/updateFriendListOfFbUser?userName=facebookUser"+userName+"&friendUserName=facebookUser"+friendUserName+"&action="+action ))
+          result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_getUser(userCount) =>
       {
+           master = sender           
            val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileInfoOfUser/"+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-          }
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_getAllUsers(userCount) =>
       {
+           master = sender
            val result =  pipeline2(Get("http://localhost:8080/facebook/getProfileOfAllFacebookUsers?start="+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-          }
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_getAllPosts(userCount) =>
       {
+           master = sender
            val result =  pipeline5(Get("http://localhost:8080/facebook/getPostsOfAllFacebookUsers?start="+userCount))
            result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-          }
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_getAllFriendsOfUser(userCount) =>
       {
+        master = sender
         val result = pipeline1(Get("http://localhost:8080/facebook/getAllFriendsOfUser/"+userCount))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
         }
       }
 
       case Send_likePost(authorId, postId, actionUserId) =>
       {
-        println("LikePost")
-        pipeline1(Post("http://localhost:8080/facebook/likePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
+        master = sender
+        val result = pipeline1(Post("http://localhost:8080/facebook/likePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
+        result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_SharePost(authorId, postId, actionUserId) =>
       {
-        println("Send_SharePost")
-        pipeline1(Post("http://localhost:8080/facebook/sharePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
+        master = sender
+        val result = pipeline1(Post("http://localhost:8080/facebook/sharePost",FormData(Seq("field1"->authorId, "field2"->postId, "field3"->actionUserId))))
+        result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_createAlbum(userCount,imageContent,imageId,albumId) =>
       {
-          println("bpc6....")
-          pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->imageContent,"field3"->imageId,"field4"->albumId))))
+          master = sender
+          val result = pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->imageContent,"field3"->imageId,"field4"->albumId))))
+          result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
       }
 
       case Send_getAllAlbumsOfUser(userCount) =>
       {
+        master = sender
         val result = pipeline1(Get("http://localhost:8080/facebook/getAllAlbumsOfUser/"+userCount))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+           master ! TrackHopsWhileLookUpOfEachFile(1) 
         }
+        
       }
       case Send_GetPostOfUser(authorId,actionUserId)=>
       {  
-        println("Send_GetPostOfUser")
+        master = sender
         val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser",FormData(Seq("field1"->authorId, "field2"->actionUserId))))
         result.foreach { response =>
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+           master ! TrackHopsWhileLookUpOfEachFile(1)           
         }
+        
       }
 
     }
