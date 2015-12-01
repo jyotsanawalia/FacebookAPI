@@ -1,16 +1,5 @@
 package FacebookAPI
 
-import akka.actor.{ Actor, ActorRef, Props, ActorSystem }
-import akka.routing.RoundRobinRouter
-import scala.collection.mutable._
-import spray.routing.SimpleRoutingApp
-import scala.util.Random
-import java.io._
-import java.util.Date
-import java.util.{Date, Locale}
-
-import scala.util.{Success, Failure}
-
 //spray stuff
 import akka.routing.ConsistentHashingRouter
 import akka.routing.ConsistentHashingRouter.ConsistentHashMapping
@@ -24,6 +13,18 @@ import scala.collection.mutable.MutableList
 import java.security.MessageDigest
 import scala.collection.mutable.HashMap
 import scala.collection.JavaConversions._
+
+import scala.util.{Success, Failure}
+import akka.actor.{ Actor, ActorRef, Props, ActorSystem }
+import akka.routing.RoundRobinRouter
+import scala.collection.mutable._
+import spray.routing.SimpleRoutingApp
+import scala.util.Random
+import java.io._
+import java.util.Date
+import java.util.{Date, Locale}
+
+
 //spray client stuff
 import akka.actor._
 import spray.routing.SimpleRoutingApp
@@ -33,11 +34,6 @@ import org.json4s.native.Serialization.{read, write,writePretty}
 import spray.http._
 import spray.routing.{Route, RequestContext}
 import spray.routing.directives._
-
-//for image
-import java.io.File
-import javax.imageio.ImageIO
-import java.awt.image.BufferedImage
 
 //for image compression
 import java.io.FileInputStream
@@ -307,7 +303,7 @@ object FacebookServer extends App with SimpleRoutingApp
               entity(as[FormData]) { fields =>
                   println("inside sharePostOfUser")
                   var pw10 = new FileWriter("server_log.txt",true)
-                  pw10.write("Hello, likePostOfUser \n") 
+                  pw10.write("Hello, sharePostOfUser \n") 
                   pw10.close()
                   val authorId = fields.fields(0)._2
                   val postId = fields.fields(1)._2
