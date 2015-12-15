@@ -14,6 +14,7 @@ import scala.concurrent.duration._
 import akka.routing.RoundRobinRouter
 import java.net.InetAddress
 
+
 //Security imports
 import java.security.KeyPair
 import java.security.Key
@@ -32,12 +33,19 @@ import sun.misc.BASE64Encoder
 import java.security.KeyFactory
 import java.security.Signature
 
-//JSON
-import org.json4s._
-import org.json4s.native.Serialization
-import org.json4s.native.Serialization.{ read, write, writePretty }
 
-//import scala.concurrent.ExecutionContext.Implicits.global
+
+//For the AES-256 encryption
+import java.security.MessageDigest
+import java.util
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import org.apache.commons.codec.binary.Base64
+
+//For json encode
+import org.json4s._
+import org.json4s.native.JsonMethods._
+
 
 case class Start(system : ActorSystem)
 case class Send_createUser(userCount: String , dob:String, gender:String, phoneNumber:String)
@@ -54,7 +62,9 @@ case class Send_createPage(userCount: String , dob:String, gender:String, phoneN
 case class Send_getAllFriendsOfUser(userCount:Int)
 case class Send_likePost(authorId: String, postId: String, actionUserId: String)
 case class Send_SharePost(authorId: String, postId: String, actionUserId: String)
-case class Send_GetPostOfUser(authorId: String, actionUserId: String)
+
+case class Send_GetPostOfUser(authorId: String, actionUserId: String,theAesKey:String)
+case class Send_GetPostOfUserByPostId(authorId: String, actionUserId: String,postId: String,theAesKey:String)
 
 case class TrackHopsWhileLookUpOfEachFile(success:Int)
 
@@ -73,7 +83,9 @@ object FacebookClient
 
 	  val system = ActorSystem("ClientSystem")
 	  //println("How many Users?")
-	  var numOfUsers :Int = 5
+
+    var numOfUsers :Int = 5
+
     if(args.length==1){
       numOfUsers = args(0).toInt
       println("the number of facebook users for this system is : " + numOfUsers)
@@ -83,6 +95,31 @@ object FacebookClient
 	  client_actor ! Start(system)
     //system.shutdown()
   }
+}
+
+object Encryption {
+  def encrypt(key: String, value: String): String = {
+    val cipher: Cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+    cipher.init(Cipher.ENCRYPT_MODE, keyToSpec(key))
+    Base64.encodeBase64String(cipher.doFinal(value.getBytes("UTF-8")))
+  }
+
+  def decrypt(key: String, encryptedValue: String): String = {
+    val cipher: Cipher = Cipher.getInstance("AES/ECB/PKCS5PADDING")
+    cipher.init(Cipher.DECRYPT_MODE, keyToSpec(key))
+    new String(cipher.doFinal(Base64.decodeBase64(encryptedValue)))
+  }
+
+  def keyToSpec(key: String): SecretKeySpec = {
+    var keyBytes: Array[Byte] = (SALT + key).getBytes("UTF-8")
+    val sha: MessageDigest = MessageDigest.getInstance("SHA-1")
+    keyBytes = sha.digest(keyBytes)
+    keyBytes = util.Arrays.copyOf(keyBytes, 16)
+    new SecretKeySpec(keyBytes, "AES")
+  }
+
+  private val SALT: String =
+    "jMhKlOuJnM34G6NHkqo9V010GhLAqOpF0BePojHgh1HgNg8^72k"
 }
 
 //simulatorn, use statistics , creation and posting , reading according to our studies, with n number of users
@@ -172,6 +209,15 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
           client_driver ! Secure_Login(i.toString,"login")
         }
 
+        client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
+        client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
+        val theAesKey = "My very own, very private key here!"
+        var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
+        println("aesEncryptedMessage :" + aesEncryptedMessage)
+        client_driver ! Send_createPost("3",aesEncryptedMessage,"1")
+        client_driver ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
+
+
         //simulate()
 
 }
@@ -233,7 +279,13 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //   i = i+8
         // }
 
-        client_driver ! Send_createPost("3","First post of the User","1")
+
+        //Encrypt the post data before creating it!
+        val theAesKey = "My very own, very private key here!"
+        var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
+        println("aesEncryptedMessage :" + aesEncryptedMessage)
+        client_driver ! Send_createPost("3",aesEncryptedMessage,"1")
+
         client_driver ! Send_createPost("3","second post of the User","2")
         client_driver ! Send_createPost("2","first post of the thh User","3")
         client_driver ! Send_createPost("2","second post of the thh User","4")
@@ -244,21 +296,24 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //       i = i+1
         // }
 
-        client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
-        client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
-        client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
+        // client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
+        // client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
+        // client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
 
-        client_driver ! Send_likePost("3","1","1")
-        client_driver ! Send_SharePost("3","1","1")
+        // client_driver ! Send_likePost("3","1","1")
+        // client_driver ! Send_SharePost("3","1","1")
 
 
-        //Simulation ends , below are all the sample get APIS // refer to client_log.txt
-        client_driver ! Send_getUser(2)
-        client_driver ! Send_getAllUsers(3)
-        client_driver ! Send_getAllFriendsOfUser(1)
-        client_driver ! Send_getAllPosts(3)
-        client_driver ! Send_GetPostOfUser("3","1")
-        client_driver ! Send_getAllAlbumsOfUser(1)
+
+        // Simulation ends , below are all the sample get APIS // refer to client_log.txt
+        //client_driver ! Send_getUser(2)
+        //client_driver ! Send_getAllUsers(3)
+        //client_driver ! Send_getAllFriendsOfUser(1)
+        //client_driver ! Send_getAllPosts(3)
+        client_driver ! Send_GetPostOfUser("3","1",theAesKey)
+        client_driver ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
+        //client_driver ! Send_getAllAlbumsOfUser(1)
+
 
       }
 
@@ -516,7 +571,8 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         }
         
       }
-      case Send_GetPostOfUser(authorId,actionUserId)=>
+
+      case Send_GetPostOfUser(authorId,actionUserId,theAesKey)=>
       {  
         master = sender
         val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser",FormData(Seq("field1"->authorId, "field2"->actionUserId))))
@@ -524,8 +580,29 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
            println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
            //master ! TrackHopsWhileLookUpOfEachFile(1)           
-        }        
+        }     
       }
+
+      case Send_GetPostOfUserByPostId(authorId,actionUserId,postId,theAesKey)=>
+      {  
+        master = sender
+        val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->postId))))
+        result.foreach { response =>
+           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+           implicit val formats = DefaultFormats
+           val json = parse(response.entity.asString)
+           println(json)
+           var content = (json \ "content").extract[String]
+           println(content)
+           var encryptedAesData = content
+           var decryptedAesData = Encryption.decrypt(theAesKey, encryptedAesData)
+           println("decryptedAesData : " + decryptedAesData)
+           master ! TrackHopsWhileLookUpOfEachFile(1)           
+        }
+        
+      }
+
     }
 
   def writeToLog(content :String){ 
@@ -535,7 +612,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   }  
 
 }
-//}
+
 	
 
 

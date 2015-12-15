@@ -98,7 +98,7 @@ case class GetFriendListOfUser(userName:String)
 case class AddToPageOwnerListMapOfCache(userName:String, pageOwnerList:List[String])
 
 //posts
-case class Post(author: String,content: String,likeCount: Int,shareCount: Int) extends Serializable
+case class Post(author: String,content: String,likeCount: Int,shareCount: Int)
 case class PostMapForTheUser(postMap:HashMap[String,Post])
 case class CreatePost(content:String,postId:String)
 case class PostMapOfAll(postMapOfAll:HashMap[String,HashMap[String,Post]])
@@ -107,6 +107,7 @@ case class PostMapForAll(userName:String, postMapForTheUser:HashMap[String,Post]
 case class LikePost(postId:String, actionUserId:Int)
 case class UserPostMap(postMap:HashMap[String,Post])
 case class GetPostOfUser(username:String,actionUserName:String)
+case class GetPostOfUserByPostId(username:String,actionUserName:String,postId:String)
 case class SharePost(postId:String, actionUserId:Int)
 
 
@@ -457,6 +458,35 @@ object FacebookServer extends App with SimpleRoutingApp
                   //val actor = system.actorSelection("akka://facebookAPI/user/"+userCount)
                   val future = cache_actor ? GetPostOfUser(userName, actionUserName)
                   val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[UserPostMap]
+                  
+                  complete{
+                    JsonUtil.toJson(postMapOfUser)
+                  }
+                }
+              }
+            }
+
+            lazy val getPostOfUserByPostId = get{
+            respondWithMediaType(MediaTypes.`application/json`)
+                path("facebook"/"getPostOfUserByPostId"){
+                  entity(as[FormData]) { fields =>
+                    println("inside getPostOfUserByPostId")
+                    val authorId = fields.fields(0)._2
+                    val actionUserId = fields.fields(1)._2
+                    val postId = fields.fields(2)._2
+                  //println("getPostOfUser")
+
+                  val userName = "facebookUser"+authorId
+                  val actionUserName = "facebookUser"+actionUserId
+
+                  var pw14 = new FileWriter("server_log.txt",true)
+                  pw14.write("Hello, getPostOfUserByPostId \n") 
+                  pw14.close()
+                  
+                  //val actor = system.actorSelection("akka://facebookAPI/user/"+userCount)
+                  val future = cache_actor ? GetPostOfUserByPostId(userName, actionUserName,postId)
+                  //val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[UserPostMap]
+                  val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[Post]
                   complete{
                     JsonUtil.toJson(postMapOfUser)
                   }
@@ -545,6 +575,7 @@ object FacebookServer extends App with SimpleRoutingApp
           createPost ~
           getAllPostsOfUserOnFb ~
           getPostOfUser ~
+          getPostOfUserByPostId ~
           likePostOfUser ~
           addImageToAnAlbum ~
           getAllAlbumsOfUser ~
@@ -638,8 +669,7 @@ object FacebookServer extends App with SimpleRoutingApp
       }
 
       case GetPostOfUser(userName,actionUserName) => {
-        //println("actionUserName : "+actionUserName)
-        val friendList : List[String]= userFriendMap.get(userName) match{
+         val friendList : List[String]= userFriendMap.get(userName) match{
           case Some(friendList) => friendList
           case None => emptyList
           }
@@ -660,7 +690,32 @@ object FacebookServer extends App with SimpleRoutingApp
             println("Sorry you are not in the friendlist of this user !")
             sender ! UserPostMap(emptyPostMap)
           }
+        
         }
+
+        case GetPostOfUserByPostId(userName,actionUserName,postId) => {
+          println("actionUserName : "+actionUserName)
+          val friendList : List[String]= userFriendMap.get(userName) match{
+          case Some(friendList) => friendList
+          case None => emptyList
+          }
+          if (friendList.contains(actionUserName)){
+            val postMap : HashMap[String,Post] = postMapForAllUsers.get(userName) match{
+            case Some(postMap) => postMap
+            case None => emptyPostMap
+            }
+            val post : Post = postMap.get(postId) match {
+              case Some(post) => post
+              case None => Post("Error","Error",1,1) 
+            }    
+            sender ! post
+          }
+          else{
+            println("Sorry you are not in the friendlist of this user !")
+            sender ! Post("Error","Error",1,1)
+          }
+        }
+
 
     }
   }
@@ -890,26 +945,19 @@ object FacebookServer extends App with SimpleRoutingApp
         }
 
       def compressImageToTransfer(file: File, filename: String, qualityOfOutPutImage: Float): InputStream = {
-        val inputStream = new FileInputStream(file)
-         
+        val inputStream = new FileInputStream(file)       
         // Creating An In Memory Output Stream 
-        val outPutStream = new ByteArrayOutputStream
-         
-        val image = ImageIO.read(inputStream)   // BufferedImage
-         
+        val outPutStream = new ByteArrayOutputStream         
+        val image = ImageIO.read(inputStream)   // BufferedImage         
         val writers = ImageIO.getImageWritersByFormatName("jpg")
         val writer = writers.next
         val imageOutputStream = ImageIO.createImageOutputStream(outPutStream) // Image Output Stream
-        writer.setOutput(imageOutputStream)
-         
+        writer.setOutput(imageOutputStream)         
         val param = writer.getDefaultWriteParam
-        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT) // Setting Compression Mode
-         
+        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT) // Setting Compression Mode         
         // Specifying The Image Quality , We Can Choose The Quality Required
-        param.setCompressionQuality(qualityOfOutPutImage) 
-         
-        writer.write(null, new IIOImage(image, null, null), param)
-         
+        param.setCompressionQuality(qualityOfOutPutImage)          
+        writer.write(null, new IIOImage(image, null, null), param)         
         // Closing The Input and Output Streams
         inputStream.close
         outPutStream.close
@@ -925,14 +973,15 @@ object FacebookServer extends App with SimpleRoutingApp
 
 object JsonUtil{
   
-  implicit val formats = native.Serialization.formats(ShortTypeHints(List(classOf[ProfileMap])))
+  implicit val formats = native.Serialization.formats(ShortTypeHints(List(classOf[ProfileMap],classOf[UserPostMap],classOf[Post])))
   def toJson(profile:Profile) : String = writePretty(profile)
   def toJson(profileList:ProfileList) : String = writePretty(profileList)
   def toJson(profileMap:ProfileMapForAll) : String = writePretty(profileMap)
-  def toJson(post:Post) : String = writePretty(post)
+  //def toJson(post:Post) : String = writePretty(post)
+  def toJson(post:Post) : String = write(post)
   def toJson(postMapOfAll:PostMapOfAll) : String = writePretty(postMapOfAll)
   def toJson(friendlist:FriendListMap) : String = writePretty(friendlist)
-  def toJson(userPostsHashMap:UserPostMap) : String = writePretty(userPostsHashMap)
+  def toJson(userPostsHashMap:UserPostMap) : String = write(userPostsHashMap)
   def toJson(albumMap:AlbumMap) : String = writePretty(albumMap)
   //def toJson(aesKey : Random) : String = writePretty(aesKey)
   def toJson(aesKey : Array[Byte]) : String = writePretty(aesKey)

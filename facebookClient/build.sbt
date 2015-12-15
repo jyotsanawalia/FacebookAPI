@@ -7,7 +7,8 @@ scalaVersion  := "2.11.0"
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
 resolvers += "spray repo" at "http://repo.spray.io"
-
+libraryDependencies += "commons-codec" % "commons-codec" % "1.6"
+libraryDependencies += "net.liftweb" %% "lift-json" % "2.6+"
 libraryDependencies ++= {
   val akkaV = "2.3.6"
   val sprayV = "1.3.1"
