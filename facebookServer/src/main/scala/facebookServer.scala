@@ -54,6 +54,25 @@ import java.io.ByteArrayInputStream
 //for simple copy not limited to images
 import java.io.{File,FileInputStream,FileOutputStream}
 
+//Security imports
+import java.security.KeyPair
+import java.security.KeyPairGenerator
+import java.security.NoSuchAlgorithmException
+import java.security.PublicKey
+import scala.collection.mutable.ArrayBuffer
+import akka.actor._
+import java.util.Calendar
+import java.security.SecureRandom
+import javax.crypto.Cipher
+import java.security.spec._
+import sun.misc.BASE64Decoder
+import sun.misc.BASE64Encoder
+import java.security.KeyFactory
+import java.security.Signature
+
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+
 
 case class Profile(userName: String,dob: String, gender:String, phoneNumber:String, emailId:String, image : String, isPage : Int) extends Serializable
 case class ProfileList(profileList : ArrayBuffer[Profile])
@@ -98,6 +117,14 @@ case class ImageMapAsAlbumForTheUser(albumName:String, imageMapForTheUser:HashMa
 case class GetAlbumOfUser(userName:String)
 case class AlbumMap(albumMap:HashMap[String,HashMap[String,ImagePost]])
 
+//security cases
+case class Secure_RegisterProfileInfoOfUser(userCount: Int,dob:String,gender:String, phoneNumber:String, publicKey:String)
+case class Secure_Profile(userName: String, publicKey:PublicKey) extends Serializable
+case class SecurePublicKeyMap(username:String, publicKey:PublicKey) extends Serializable
+case class RequestRandomNumber(action : String)
+case class Random(aesKey : Array[Byte])
+case class GetPublicKeyOfUser(userName:String)
+
 object FacebookServer extends App with SimpleRoutingApp
 { 
 
@@ -110,15 +137,15 @@ object FacebookServer extends App with SimpleRoutingApp
     pw.close()
 	  val actorCount: Int = Runtime.getRuntime().availableProcessors()*100
     implicit val timeout =  akka.util.Timeout(50000)
-    //var profileList = new java.util.ArrayList[Profile]()
+    var userRandomNumberMap = new scala.collection.mutable.HashMap[String,String]()
 
 	  println("Facebook Server Started....")
     val cache_actor = system.actorOf(Props[CacheMaster], name="cache_actor")
     //println("here")
 
-         lazy val createUserForFb = post {
+        lazy val createUserForFb = post {
           path("facebook" / "createUser") {
-            println("createUser....")
+            //println("createUser....")
                 entity(as[FormData]) { fields =>
                     //println("Fields = " + fields)
                      var pw1 = new FileWriter("server_log.txt",true)
@@ -134,6 +161,79 @@ object FacebookServer extends App with SimpleRoutingApp
             }
           }
         }
+
+        //register users
+        lazy val registerUserForFb = post {
+          path("facebook" / "secure_registerUser") {
+            println("secure_register....")
+                entity(as[FormData]) { fields =>
+                    //println("Fields = " + fields)
+                     var pw1 = new FileWriter("server_log.txt",true)
+                     pw1.write("Hello, createUserForFb \n")
+                     pw1.close()
+                    val userId = fields.fields(0)._2
+                    val dob= fields.fields(1)._2
+                    val gender = fields.fields(2)._2
+                    val phoneNumber = fields.fields(3)._2
+                    val publicKey = fields.fields(4)._2
+                    //println("publicKeyString in server : "+publicKey)
+                    val facebookUser_actor = system.actorOf(Props(new FacebookUser(system,cache_actor)),name="facebookUser"+userId) 
+                    //facebookUser_actor!SetProfileInfoOfUser(userId.toInt,dob,gender,phoneNumber)
+                    facebookUser_actor ! Secure_RegisterProfileInfoOfUser(userId.toInt,dob,gender,phoneNumber,publicKey)
+                    complete("Done")
+            }
+          }
+        }
+
+        //secure user login
+        lazy val secure_login = post {
+          path("facebook"/"secure_login"){
+            println("secure_login....")
+              entity(as[FormData]){ fields =>
+                // var pw1 = new FileWriter("server_log.txt",true)
+                // pw1.write("Hello, createUserForFb \n")
+                // pw1.close()
+                val userId = fields.fields(0)._2
+                val action = fields.fields(1)._2
+                var userName : String = "facebookUser"+userId
+                var randomNumberString : String =  createRandomNumber(userName) 
+
+                complete(randomNumberString)
+              }
+          }
+        }
+
+        lazy val secure_connect = post {
+          path("facebook"/"secure_connect"){
+            println("secure_connect....")
+              entity(as[FormData]){ fields =>
+                // var pw1 = new FileWriter("server_log.txt",true)
+                // pw1.write("Hello, createUserForFb \n")
+                // pw1.close()
+                val userId = fields.fields(0)._2
+                val randomNumberFromClient : String = fields.fields(1)._2
+                val signatureString = fields.fields(2)._2
+                val userName = "facebookUser"+userId
+                //println("signatureString server side : "+signatureString)
+                val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
+                // implicit val timeout =  Timeout(2 seconds)
+                val future = actor ? GetPublicKeyOfUser(userName)
+                val publicKey = Await.result(future, timeout.duration).asInstanceOf[PublicKey]
+                //println("publicKey in secure_connect: "+publicKey)
+                var randomNumberString = getRandomString(userName)
+                
+                val result : Boolean = verifySignature(randomNumberString,signatureString,publicKey)
+                //println("result = "+result)
+                complete{
+                  if(result)
+                  JsonUtil.toJson("Welcome To Facebook")
+                  else
+                  JsonUtil.toJson("Try again")
+                }
+              }
+          }
+        }
+
 
         lazy val createPageForFb = post {
           path("facebook" / "createPage") {
@@ -156,7 +256,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
         lazy val updateFriendListOfTheUser = post {
           path("facebook" / "updateFriendListOfFbUser") {
-            println("bp1....updateFriendListOfTheUser")
+            //println("bp1....updateFriendListOfTheUser")
             entity(as[FormData]) { fields =>
               val userName = "facebookUser"+fields.fields(0)._2
               val friendUserName = "facebookUser"+fields.fields(1)._2
@@ -239,7 +339,6 @@ object FacebookServer extends App with SimpleRoutingApp
                 
               }
             
-
 
           lazy val createPost = post {
           path("facebook" / "createPost") {
@@ -380,13 +479,64 @@ object FacebookServer extends App with SimpleRoutingApp
                     JsonUtil.toJson(albumMapOfUser)
                   }
                 }
-              }          
+              }
 
-        
+          def verifySignature(randomNumberString:String,signatureString:String,publicKey:PublicKey) : Boolean =
+          {
+            var decoder : BASE64Decoder = new BASE64Decoder()
+            var randomNumber  : Array[Byte] = decoder.decodeBuffer(randomNumberString)
+            var signature : Array[Byte] = decoder.decodeBuffer(signatureString)
 
+            //println("\nsignature in verifySignature : "+signature)
+            //println("\nrandomNumber in verifySignature : "+randomNumber)
+            //println("\npublic key in verifySignature : "+publicKey)
+
+            val signer : Signature = Signature.getInstance("SHA256withRSA")
+            signer.initVerify(publicKey)
+            signer.update(randomNumber)
+            val bool : Boolean = signer.verify(signature)
+            return bool
+          }   
+
+          def getRandomString(userName : String) : String =
+          {
+
+            val randomNumberStringTimestamp = userRandomNumberMap.get(userName) match{
+              case Some(randomNumberStringTimestamp) => randomNumberStringTimestamp
+              case None => "Error"
+              }  
+
+              //println("randomNumberStringTimestamp = "+randomNumberStringTimestamp)
+              var parts = randomNumberStringTimestamp.split("timestamp")
+              var randomNumberString : String = parts(0)
+              var timestamp : String = parts(1)
+
+              //println("randomNumberString : "+randomNumberString)  
+              randomNumberString
+          } 
+
+          def createRandomNumber(userName : String) : String =
+          {
+            val ranGen = new SecureRandom()
+            val aesKey = new Array[Byte](32)
+            ranGen.nextBytes(aesKey)
+
+            val encoder : BASE64Encoder  = new BASE64Encoder()
+            var randomNumberString : String  = encoder.encode(aesKey)
+
+            val timeStamp = Calendar.getInstance().getTime()
+            var randomNumberStringTimestamp : String = randomNumberString + "timestamp" + timeStamp
+            userRandomNumberMap += (userName -> randomNumberStringTimestamp)
+      
+            return randomNumberString
+          }
+                
 
   	     startServer(interface = "localhost", port = 8080) {
           createUserForFb ~
+          registerUserForFb ~
+          secure_login ~
+          secure_connect ~
           updateFriendListOfTheUser ~
           profileInfoOfUserOnFb ~
           createPageForFb ~
@@ -410,7 +560,8 @@ object FacebookServer extends App with SimpleRoutingApp
     var userFriendMap = new scala.collection.mutable.HashMap[String,List[String]]()
     var pageOwnerMap = new scala.collection.mutable.HashMap[String,List[String]]()
     var postMapForAllUsers = new scala.collection.mutable.HashMap[String,HashMap[String, Post]]()
-
+    //public keys map
+    var publicKeyMap = new scala.collection.mutable.HashMap[String,PublicKey]()
     
     var emptyList : List[String] = List("","","")
     var emptyPostMap = new scala.collection.mutable.HashMap[String,Post]()
@@ -421,6 +572,12 @@ object FacebookServer extends App with SimpleRoutingApp
       case ProfileMap(userName, profileObject)=>
       {
         profileMapForAllUsers += (userName -> profileObject)
+      }
+
+      //public keys for all users
+      case SecurePublicKeyMap(userName, publicKey)=>
+      {
+        publicKeyMap += (userName -> publicKey)
       }
 
       case PostMapForAll(userName, postMapForTheUser)=>
@@ -481,7 +638,7 @@ object FacebookServer extends App with SimpleRoutingApp
       }
 
       case GetPostOfUser(userName,actionUserName) => {
-        println("actionUserName : "+actionUserName)
+        //println("actionUserName : "+actionUserName)
         val friendList : List[String]= userFriendMap.get(userName) match{
           case Some(friendList) => friendList
           case None => emptyList
@@ -513,6 +670,7 @@ object FacebookServer extends App with SimpleRoutingApp
   class FacebookUser(system:ActorSystem,cache_actor:ActorRef) extends Actor 
   {
     var profileMap = new scala.collection.mutable.HashMap[String, Profile]()
+    var secureProfileMap = new scala.collection.mutable.HashMap[String, PublicKey]()
     var userName:String = ""
     var emailId : String = ""
     var isPage : Int = 0
@@ -534,6 +692,24 @@ object FacebookServer extends App with SimpleRoutingApp
             emailId = userName+"@gmail.com"
             val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image,isPage)
             putProfile(userName,profileObj)       
+          }
+
+          case Secure_RegisterProfileInfoOfUser(userCount,dob,gender,phoneNumber,publicKey)=>
+          {
+            userName = "facebookUser"+userCount;
+            emailId = userName+"@gmail.com"
+            val profileObj = Profile(userName,dob,gender,phoneNumber,emailId,image,isPage)
+            //val secureProfileObj = Secure_Profile(userName,publicKey)
+            putProfile(userName,profileObj)  
+            putSecureProfile(userName,publicKey) 
+          }
+
+          case GetPublicKeyOfUser(userName) =>
+          {
+            val publicKey = secureProfileMap.get(userName) match{
+              case Some(publicKey) => publicKey
+            } 
+            sender ! publicKey
           }
 
           case SetProfileInfoOfPage(userCount,dob,gender,phoneNumber)=>
@@ -640,6 +816,21 @@ object FacebookServer extends App with SimpleRoutingApp
         cache_actor ! ProfileMap(userName, profileObj)
       }
 
+      def putSecureProfile(userName : String, publicKeyString:String){
+        //Convert PublicKeyString to Byte Stream
+        var decoder : BASE64Decoder = new BASE64Decoder()
+        var sigBytes2  : Array[Byte] = decoder.decodeBuffer(publicKeyString)
+
+        // Convert the public key bytes into a PublicKey object
+        var x509KeySpec : X509EncodedKeySpec = new X509EncodedKeySpec(sigBytes2)
+        var keyFact : KeyFactory = KeyFactory.getInstance("RSA")
+        var publicKeyUser : PublicKey = keyFact.generatePublic(x509KeySpec)
+
+        //println("publicKey server side : "+publicKeyUser)
+        secureProfileMap += (userName -> publicKeyUser)
+        cache_actor ! SecurePublicKeyMap(userName,publicKeyUser)
+      }
+
       def putPostToMapAndCache(userName :String,postObj:Post,postId:String){
         postMapForTheUser += (postId -> postObj)
         cache_actor ! PostMapForAll(userName, postMapForTheUser)
@@ -743,5 +934,7 @@ object JsonUtil{
   def toJson(friendlist:FriendListMap) : String = writePretty(friendlist)
   def toJson(userPostsHashMap:UserPostMap) : String = writePretty(userPostsHashMap)
   def toJson(albumMap:AlbumMap) : String = writePretty(albumMap)
-
+  //def toJson(aesKey : Random) : String = writePretty(aesKey)
+  def toJson(aesKey : Array[Byte]) : String = writePretty(aesKey)
+  def toJson(string : String) : String = write(string)
 }
