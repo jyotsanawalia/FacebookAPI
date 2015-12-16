@@ -217,9 +217,9 @@ object FacebookServer extends App with SimpleRoutingApp
                 val signatureString = fields.fields(2)._2
                 val userName = "facebookUser"+userId
                 //println("signatureString server side : "+signatureString)
-                val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
+                //val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
                 // implicit val timeout =  Timeout(2 seconds)
-                val future = actor ? GetPublicKeyOfUser(userName)
+                val future = cache_actor ? GetPublicKeyOfUser(userName)
                 val publicKey = Await.result(future, timeout.duration).asInstanceOf[PublicKey]
                 //println("publicKey in secure_connect: "+publicKey)
                 var randomNumberString = getRandomString(userName)
@@ -535,6 +535,24 @@ object FacebookServer extends App with SimpleRoutingApp
                 }
               }
 
+              lazy val verifyPublicKeyOfUser = get{
+                respondWithMediaType(MediaTypes.`application/json`)
+                    path("facebook"/"verifyPublicKeyOfUser"/Segment){  userCount =>
+                      println("verifyPublicKeyOfUser")
+                      var pw14 = new FileWriter("server_log.txt",true)
+                      pw14.write("Hello, verifyPublicKeyOfUser \n") 
+                      pw14.close()
+                      val username = "facebookUser"+userCount
+                      val future = cache_actor ? GetPublicKeyOfUser(username)
+                      val publicKey = Await.result(future,timeout.duration).asInstanceOf[PublicKey]
+                      var publicKeyBytes : Array[Byte] = publicKey.getEncoded()
+                      val encoder : BASE64Encoder  = new BASE64Encoder()
+                      val publicKeyString : String = encoder.encode(publicKeyBytes)
+                      //println("publicKey = "+publicKey)
+                      complete(publicKeyString) 
+                    }
+              }
+
           def verifySignature(randomNumberString:String,signatureString:String,publicKey:PublicKey) : Boolean =
           {
             var decoder : BASE64Decoder = new BASE64Decoder()
@@ -604,7 +622,8 @@ object FacebookServer extends App with SimpleRoutingApp
           likePostOfUser ~
           addImageToAnAlbum ~
           getAllAlbumsOfUser ~
-          sharePostOfUser
+          sharePostOfUser ~
+          verifyPublicKeyOfUser
          }
        }
   }       
@@ -634,6 +653,14 @@ object FacebookServer extends App with SimpleRoutingApp
       case SecurePublicKeyMap(userName, publicKey)=>
       {
         publicKeyMap += (userName -> publicKey)
+      }
+
+      case GetPublicKeyOfUser(userName) =>
+      {
+          val publicKey = publicKeyMap.get(userName) match{
+            case Some(publicKey) => publicKey 
+          } 
+            sender ! publicKey
       }
 
       case PostMapForAll(userName, postMapForTheUser)=>
@@ -719,6 +746,7 @@ object FacebookServer extends App with SimpleRoutingApp
         }
 
         case GetPostOfUserByPostId(userName,actionUserName,postId) => {
+          println("inside GetPostOfUserByPostId")
           //println("actionUserName : "+actionUserName)
           val friendList : List[String]= userFriendMap.get(userName) match{
           case Some(friendList) => friendList
@@ -782,13 +810,13 @@ object FacebookServer extends App with SimpleRoutingApp
             putSecureProfile(userName,publicKey) 
           }
 
-          case GetPublicKeyOfUser(userName) =>
-          {
-            val publicKey = secureProfileMap.get(userName) match{
-              case Some(publicKey) => publicKey
-            } 
-            sender ! publicKey
-          }
+          // case GetPublicKeyOfUser(userName) =>
+          // {
+          //   val publicKey = secureProfileMap.get(userName) match{
+          //     case Some(publicKey) => publicKey
+          //   } 
+          //   sender ! publicKey
+          // }
 
           case SetProfileInfoOfPage(userCount,dob,gender,phoneNumber)=>
           {
@@ -889,13 +917,13 @@ object FacebookServer extends App with SimpleRoutingApp
 
         case GetPicOfUserByImageId(userName, actionUserName, picId, albumId) => {
           
-          println("imageMapAsAlbumForTheUser : "+imageMapAsAlbumForTheUser)
+          //println("imageMapAsAlbumForTheUser : "+imageMapAsAlbumForTheUser)
           if (friendList.contains(actionUserName)){
             var imageMap = imageMapAsAlbumForTheUser.get(albumId) match{
               case Some(imageMap) => imageMap
               case None => HashMap("0" -> ("0","0"))
             }
-            println("\nImageMap in getPicOfUserByImageId : "+imageMap)
+            //println("\nImageMap in getPicOfUserByImageId : "+imageMap)
             var image = imageMap.get(picId) match{
               case Some(image) => image
               case None => ImagePost("0","0")
@@ -1030,4 +1058,5 @@ object JsonUtil{
   def toJson(aesKey : Array[Byte]) : String = writePretty(aesKey)
   def toJson(string : String) : String = write(string)
   def toJson(image : ImagePost) : String = write(image)
+  def toJson(publicKey : PublicKey) : String = writePretty(publicKey)
 }
