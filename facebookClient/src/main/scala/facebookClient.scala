@@ -39,6 +39,15 @@ import sun.misc.BASE64Encoder
 import java.security.KeyFactory
 import java.security.Signature
 
+//for image to string
+import org.apache.commons.codec.binary.Base64
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 
 
 //For the AES-256 encryption
@@ -47,6 +56,8 @@ import java.util
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import org.apache.commons.codec.binary.Base64
+//import org.apache.commons.codec.binary.Base64
+//import org.apache.commons.io.IOUtils
 
 //For json encode
 import org.json4s._
@@ -219,22 +230,37 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
           client_driver(i) ! Secure_Login(i.toString,"login")
         }
 
+
         //client_driverMain ! Secure_Login("10","login")
         client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
         client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
+        
+        //client_driver(1) ! Send_createPost("1","First post of the User","1")
+        //client_driver(1) ! Send_createPost("1","second post of the User","2")
+
+        //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
+
+        client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
+        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
+
+        //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
+        //client_driver ! Send_getAllAlbumsOfUser(1)
+
+
+        //client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
+        //client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
         //val theAesKey = "My very own, very private key here!"
         //var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
         //println("aesEncryptedMessage :" + aesEncryptedMessage)
-        client_driver(1) ! Send_createPost("1","First post of the User","1")
-        client_driver(1) ! Send_createPost("1","second post of the User","2")
-        client_driver(2) ! Send_createPost("2","first post of the User","3")
-        client_driver(2) ! Send_createPost("2","second post of the User","4")
+        //client_driver ! Send_createPost("3",aesEncryptedMessage,"1")
+        //client_driver ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
 
-        client_driver(1) ! Send_createAlbum("1","photo","imageId1","albumId1")
-        client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
 
-        client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
-        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
+        //client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
+        //client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
+
+        //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
+        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
 
         //simulate()
 
@@ -412,7 +438,6 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   	{
   		case Send_createUser(userCount,dob,gender,phoneNumber) =>
       {
-          //println("bpc1....")
           master = sender
           println("publicKey at client which is sent to server : "+publicKey)
           val result = pipeline1(Post("http://localhost:8080/facebook/createUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber))))
@@ -565,9 +590,13 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
       case Send_createAlbum(userCount,imageContent,imageId,albumId) =>
       {   
-          //var aesEncryptedImage:String = Encryption.encrypt(theAesKey, imageContent)
+          val bis = new BufferedInputStream(new FileInputStream("common/" + imageContent +".jpg"))
+          val bArray = Stream.continually(bis.read).takeWhile(-1 !=).map(_.toByte).toArray
+          val bytes64 = Base64.encodeBase64(bArray)
+          val imageContent1 = new String(bytes64)
+          var aesEncryptedImage:String = Encryption.encrypt(theAesKey, imageContent1)
           master = sender
-          val result = pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->imageContent,"field3"->imageId,"field4"->albumId))))
+          val result = pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->aesEncryptedImage,"field3"->imageId,"field4"->albumId))))
           result.foreach { response =>
           println(s"Request completed in Send_createAlbum with status ${response.status} and content:\n${response.entity.asString}")
           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
@@ -577,11 +606,32 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
       case Send_getPicOfUserByImageId(authorId,actionUserId,imageId,albumId) =>
       {
-        master = sender
-        val result = pipeline1(Get("http://localhost:8080/facebook/getPicOfUserByImageId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->imageId, "field4"->albumId))))
-        result.foreach{ response =>
-          println(s"Request completed in Send_getPicOfUserByImageId with status ${response.status} and content:\n${response.entity.asString}")
-          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+          val encryptedAESkey = getAccess(authorId,actionUserId, publicKey)
+          if(!encryptedAESkey.isEmpty){
+              master = sender
+              val result = pipeline1(Get("http://localhost:8080/facebook/getPicOfUserByImageId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->imageId, "field4"->albumId))))
+              result.foreach { response =>
+                 println(s"Request completed in Send_GetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
+                 writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+                 implicit val formats = DefaultFormats
+                 val json = parse(response.entity.asString)
+                 var imageContent1 = (json \ "imageContent").extract[String]
+
+                 if(!(imageContent1.equals("Error"))){
+                    var encryptedAesData = imageContent1
+                    println("\nencryptedAESkey before sending to decryptDataFromAPI : "+encryptedAESkey)
+                    val decryptedAesData = decryptDataFromAPI(encryptedAesData, encryptedAESkey)              
+                    //println("\ndecryptedAesData inside Send_getPicOfUserByImageId: " + decryptedAesData)
+                    val decodedBArray = Base64.decodeBase64(decryptedAesData)
+                    val bos = new BufferedOutputStream(new FileOutputStream("images/imageofUser"+ actionUserId +".jpg"))
+                    Stream.continually(bos.write(decodedBArray))
+                    bos.close()
+
+                }
+                else
+                println("this author did not post this post")
+                        
+          }
         }
       }
 
@@ -638,29 +688,20 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
     }
 
       case GiveAccess(actionUserId , publicKeyOfRequestor) => {
-        //var bytesArray = Array[Byte]()
         actorRequestor = sender
-        //println("\nbytes initialized in GiveAccess : "+bytesArray)
-        //println("\n publicKeyOfRequestor starting : "+publicKeyOfRequestor) 
         val result = pipeline1(Get("http://localhost:8080/facebook/verifyPublicKeyOfUser/"+actionUserId))
         result.foreach { response =>
-           //println(s"Request completed in GiveAccess with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
            var publicKeyBytes : Array[Byte] = publicKeyOfRequestor.getEncoded()
            val encoder : BASE64Encoder  = new BASE64Encoder()
            val publicKeyString : String = encoder.encode(publicKeyBytes)
-           //println("\npublicKeyReceived : "+response.entity.asString)
-           //println("\npublicKey : "+publicKeyString)
            if((response.entity.asString).equals(publicKeyString))
            {
-              println("The public keys are equal. Hence the requestor is genuine.")
-              //println("\n publicKeyOfRequestor ending : "+publicKeyOfRequestor) 
+              println("The public keys are equal. Hence the requestor is genuine.") 
               bytesArray  = RSA.encrypt(theAesKey,publicKeyOfRequestor)
-              //println("if bytes in GiveAccess : "+bytesArray)
               actorRequestor ! bytesArray
            }      
             else{
-               //println("else bytes : "+bytes)
                actorRequestor ! Array[Byte]()
             }
         }

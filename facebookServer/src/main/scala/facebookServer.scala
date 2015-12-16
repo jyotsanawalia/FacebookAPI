@@ -430,7 +430,7 @@ object FacebookServer extends App with SimpleRoutingApp
                       val imageId = fields.fields(2)._2
                       var albumId = fields.fields(3)._2
                       //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
-                      val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"++authorUserName)
+                      val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"+authorUserName)
                       facebookUser_actor ! CreateAlbum(imageContent,imageId,albumId)
                       complete("Done")
             }
@@ -926,7 +926,7 @@ object FacebookServer extends App with SimpleRoutingApp
             //println("\nImageMap in getPicOfUserByImageId : "+imageMap)
             var image = imageMap.get(picId) match{
               case Some(image) => image
-              case None => ImagePost("0","0")
+              case None => ImagePost("Error","Error")
             }
 
             sender ! image
@@ -962,7 +962,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
       def putImageToMapAndCache(userName:String,imageObj:ImagePost,imageId:String,albumId:String){
         //println("putImageToMapAndLocalDisk in:")
-        transferImagesBetweenClientAndServer(userName,imageObj.imageContent,albumId,imageId)
+        //transferImagesBetweenClientAndServer(userName,imageObj.imageContent,albumId,imageId)
         var imageMap = imageMapAsAlbumForTheUser.get(albumId) match{
                   case Some(imageMap) => imageMap
                   case None => HashMap(imageId -> imageObj)
