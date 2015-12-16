@@ -117,6 +117,7 @@ case class ImagePost(author: String,imageContent: String) extends Serializable
 case class ImageMapAsAlbumForTheUser(albumName:String, imageMapForTheUser:HashMap[String,ImagePost])
 case class GetAlbumOfUser(userName:String)
 case class AlbumMap(albumMap:HashMap[String,HashMap[String,ImagePost]])
+case class GetPicOfUserByImageId(username : String ,actionUserName:String ,picId : String ,albumId : String)
 
 //security cases
 case class Secure_RegisterProfileInfoOfUser(userCount: Int,dob:String,gender:String, phoneNumber:String, publicKey:String)
@@ -166,7 +167,7 @@ object FacebookServer extends App with SimpleRoutingApp
         //register users
         lazy val registerUserForFb = post {
           path("facebook" / "secure_registerUser") {
-            println("secure_register....")
+            //println("secure_register....")
                 entity(as[FormData]) { fields =>
                     //println("Fields = " + fields)
                      var pw1 = new FileWriter("server_log.txt",true)
@@ -189,7 +190,7 @@ object FacebookServer extends App with SimpleRoutingApp
         //secure user login
         lazy val secure_login = post {
           path("facebook"/"secure_login"){
-            println("secure_login....")
+            //println("secure_login....")
               entity(as[FormData]){ fields =>
                 // var pw1 = new FileWriter("server_log.txt",true)
                 // pw1.write("Hello, createUserForFb \n")
@@ -206,7 +207,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
         lazy val secure_connect = post {
           path("facebook"/"secure_connect"){
-            println("secure_connect....")
+            //println("secure_connect....")
               entity(as[FormData]){ fields =>
                 // var pw1 = new FileWriter("server_log.txt",true)
                 // pw1.write("Hello, createUserForFb \n")
@@ -442,7 +443,7 @@ object FacebookServer extends App with SimpleRoutingApp
             respondWithMediaType(MediaTypes.`application/json`)
                 path("facebook"/"getPostOfUser"){
                   entity(as[FormData]) { fields =>
-                    println("inside getPostOfUser")
+                    //println("inside getPostOfUser")
                     val authorId = fields.fields(0)._2
                     val actionUserId = fields.fields(1)._2
                   //println("getPostOfUser")
@@ -470,7 +471,7 @@ object FacebookServer extends App with SimpleRoutingApp
             respondWithMediaType(MediaTypes.`application/json`)
                 path("facebook"/"getPostOfUserByPostId"){
                   entity(as[FormData]) { fields =>
-                    println("inside getPostOfUserByPostId")
+                    //println("inside getPostOfUserByPostId")
                     val authorId = fields.fields(0)._2
                     val actionUserId = fields.fields(1)._2
                     val postId = fields.fields(2)._2
@@ -490,6 +491,29 @@ object FacebookServer extends App with SimpleRoutingApp
                   complete{
                     JsonUtil.toJson(postMapOfUser)
                   }
+                }
+              }
+            }
+
+            lazy val getPicOfUserByImageId = get{
+              respondWithMediaType(MediaTypes.`application/json`)
+                path("facebook"/"getPicOfUserByImageId"){
+                  entity(as[FormData]) { fields =>
+                    println("inside getPicOfUserByImageId")
+                    val authorId = fields.fields(0)._2
+                    val actionUserId = fields.fields(1)._2
+                    val picId = fields.fields(2)._2
+                    val albumId = fields.fields(3)._2
+
+                    val userName = "facebookUser"+authorId
+                    val actionUserName = "facebookUser"+actionUserId
+
+                    val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
+                    val future = actor ? GetPicOfUserByImageId(userName,actionUserName,picId,albumId)
+                    val image = Await.result(future,timeout.duration).asInstanceOf[ImagePost]
+                    complete{
+                      JsonUtil.toJson(image)
+                    }
                 }
               }
             }
@@ -576,6 +600,7 @@ object FacebookServer extends App with SimpleRoutingApp
           getAllPostsOfUserOnFb ~
           getPostOfUser ~
           getPostOfUserByPostId ~
+          getPicOfUserByImageId ~ //new
           likePostOfUser ~
           addImageToAnAlbum ~
           getAllAlbumsOfUser ~
@@ -694,7 +719,7 @@ object FacebookServer extends App with SimpleRoutingApp
         }
 
         case GetPostOfUserByPostId(userName,actionUserName,postId) => {
-          println("actionUserName : "+actionUserName)
+          //println("actionUserName : "+actionUserName)
           val friendList : List[String]= userFriendMap.get(userName) match{
           case Some(friendList) => friendList
           case None => emptyList
@@ -715,8 +740,6 @@ object FacebookServer extends App with SimpleRoutingApp
             sender ! Post("Error","Error",1,1)
           }
         }
-
-
     }
   }
 
@@ -864,6 +887,24 @@ object FacebookServer extends App with SimpleRoutingApp
         sender ! AlbumMap(imageMapAsAlbumForTheUser)
         }
 
+        case GetPicOfUserByImageId(userName, actionUserName, picId, albumId) => {
+          
+          println("imageMapAsAlbumForTheUser : "+imageMapAsAlbumForTheUser)
+          if (friendList.contains(actionUserName)){
+            var imageMap = imageMapAsAlbumForTheUser.get(albumId) match{
+              case Some(imageMap) => imageMap
+              case None => HashMap("0" -> ("0","0"))
+            }
+            println("\nImageMap in getPicOfUserByImageId : "+imageMap)
+            var image = imageMap.get(picId) match{
+              case Some(image) => image
+              case None => ImagePost("0","0")
+            }
+
+            sender ! image
+          }
+        }
+
       }
      
       def putProfile(userName :String,profileObj:Profile){
@@ -900,6 +941,8 @@ object FacebookServer extends App with SimpleRoutingApp
                 }
         imageMap += (imageId -> imageObj)
         imageMapAsAlbumForTheUser += (albumId -> imageMap)
+        //println("userName = "+userName+"\timageMap : "+imageMap)
+        //println("userName = "+userName+"\timageMapAsAlbumForTheUser : "+imageMapAsAlbumForTheUser)
       }
 
 
@@ -986,4 +1029,5 @@ object JsonUtil{
   //def toJson(aesKey : Random) : String = writePretty(aesKey)
   def toJson(aesKey : Array[Byte]) : String = writePretty(aesKey)
   def toJson(string : String) : String = write(string)
+  def toJson(image : ImagePost) : String = write(image)
 }

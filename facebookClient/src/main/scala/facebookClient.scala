@@ -14,6 +14,12 @@ import scala.concurrent.duration._
 import akka.routing.RoundRobinRouter
 import java.net.InetAddress
 
+import scala.concurrent._
+import akka.pattern.ask
+import akka.util.Timeout
+import scala.util.Random
+//import scala.concurrent.ExecutionContext.Implicits.global
+
 
 //Security imports
 import java.security.KeyPair
@@ -57,23 +63,26 @@ case class Send_createPost(userCount:String,content:String,postId:String)
 
 case class Send_createAlbum(userCount:String,imageContent:String,imageId:String,albumId:String)
 case class Send_getAllAlbumsOfUser(userCount:Int)
+case class Send_getPicOfUserByImageId(authorId : String,actionUserId:String ,imageId:String ,albumId:String) //new
 
 case class Send_createPage(userCount: String , dob:String, gender:String, phoneNumber:String)
 case class Send_getAllFriendsOfUser(userCount:Int)
 case class Send_likePost(authorId: String, postId: String, actionUserId: String)
 case class Send_SharePost(authorId: String, postId: String, actionUserId: String)
 
-case class Send_GetPostOfUser(authorId: String, actionUserId: String,theAesKey:String)
-case class Send_GetPostOfUserByPostId(authorId: String, actionUserId: String,postId: String,theAesKey:String)
+case class Send_GetPostOfUser(authorId: String, actionUserId: String)
+case class Send_GetPostOfUserByPostId(authorId: String, actionUserId: String,postId: String)
 
 case class TrackHopsWhileLookUpOfEachFile(success:Int)
 
 //security cases
-case class Secure_Register(userCount: String, dob:String, gender:String, phoneNumber:String, publicKey:String)
+//case class Secure_Register(userCount: String, dob:String, gender:String, phoneNumber:String, publicKey:String)
+case class Secure_Register(userCount: String, dob:String, gender:String, phoneNumber:String)
 case class Secure_Login(usercount:String, action:String)
-case class SecureRandomNumber(userCount : String,aesKey : String)
+//case class SecureRandomNumber(userCount : String,aesKey : String)
 case class KeysArray(publicKey : PublicKey, privateKey:PrivateKey)
 case class Secure_Connect(usercount:String, randomNumberString:String, signatureString:String)
+case class GiveAccess(publicKey : PublicKey)
 
 object FacebookClient 
 {
@@ -129,13 +138,20 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   var clientBuffer= new ArrayBuffer[ActorRef]() 
   var startTime: Long = 0
   private var trackingCounter : Int = 0
-  val keyGen : KeyPairGenerator = KeyPairGenerator.getInstance(ALGORITHM)
-  keyGen.initialize(2048)
   //val keysArray = new ArrayBuffer[String]()
   val keysHashMap = new scala.collection.mutable.HashMap[String,KeysArray]
   //val emptyArray = new ArrayBuffer[String]()
-  val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient")
+  val client_driver = new ArrayBuffer[ActorRef]()
+  //for(i <- 0 until userCount){
+    //println("i = "+i)
+    //client_driver += context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient:"+i.toString)
+    //println("\nactors are : "+client_driver(i))
+  //}
 
+  //val client_driverMain = context.actorOf(Props(new FacebookAPIClient(system)), name = "FacebookAPIClient:Main")
+
+
+    
 	def receive = 
   	{       
   	 case Start(system) => 
@@ -154,18 +170,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
   			var gender :  String = ""
         for(i <-0 until userCount) 
   			{
+          client_driver += context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient:"+i.toString)
         
-        //RSA Encryption  
-        val keyGen : KeyPairGenerator = KeyPairGenerator.getInstance(ALGORITHM)
-        keyGen.initialize(2048)
-        val key : KeyPair = keyGen.generateKeyPair()
-        val publicKey : PublicKey = key.getPublic()
-        val privateKey : PrivateKey = key.getPrivate()
-        var publicKeyBytes : Array[Byte] = publicKey.getEncoded()
-        val encoder : BASE64Encoder  = new BASE64Encoder()
-        val pubKeyStr : String = encoder.encode(publicKeyBytes) // converting public key to string
-        var privateKeyBytes : Array[Byte] = privateKey.getEncoded()
-        val priKeyStr : String = encoder.encode(privateKeyBytes) // converting private key to string
         
         //RSA encryption and decryption tested
         // var bytes = RSA.encrypt("secret message",publicKey)
@@ -176,8 +182,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         // println("decryption")
         // println("message = "+message)
 
-        val keysArrayObj = new KeysArray(publicKey,privateKey) // Storing public and private keys in an KeysArrayObject
-        keysHashMap += (i.toString -> keysArrayObj)
+        //val keysArrayObj = new KeysArray(publicKey,privateKey) // Storing public and private keys in an KeysArrayObject
+        //keysHashMap += (i.toString -> keysArrayObj)
 
           val rnd = new scala.util.Random
           val dd = 1 + rnd.nextInt(28)
@@ -198,25 +204,37 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
             //client_driver ! Send_createPage(i.toString,dob,gender,phoneNumber)
           //}
           //else{
-            client_driver ! Secure_Register(i.toString,dob,gender,phoneNumber,pubKeyStr)
+            //client_driver(i) ! Secure_Register(i.toString,dob,gender,phoneNumber,pubKeyStr)
+            client_driver(i) ! Secure_Register(i.toString,dob,gender,phoneNumber)
+            //client_driver(i) ! SetKeys(publicKey,privateKey,)
             
             //client_driver ! Send_createUser(i.toString,dob,gender,phoneNumber)
           //}
   			}
 
+        //client_driverMain ! Secure_Register("10","fwew","M","12312312")
+
         for(i <-0 until userCount) 
         {
-          client_driver ! Secure_Login(i.toString,"login")
+          client_driver(i) ! Secure_Login(i.toString,"login")
         }
 
-        client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
-        client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
-        val theAesKey = "My very own, very private key here!"
-        var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
-        println("aesEncryptedMessage :" + aesEncryptedMessage)
-        client_driver ! Send_createPost("3",aesEncryptedMessage,"1")
-        client_driver ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
+        //client_driverMain ! Secure_Login("10","login")
+        client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
+        client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
+        //val theAesKey = "My very own, very private key here!"
+        //var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
+        //println("aesEncryptedMessage :" + aesEncryptedMessage)
+        client_driver(1) ! Send_createPost("1","First post of the User","1")
+        client_driver(1) ! Send_createPost("1","second post of the User","2")
+        client_driver(2) ! Send_createPost("2","first post of the User","3")
+        client_driver(2) ! Send_createPost("2","second post of the User","4")
 
+        client_driver(1) ! Send_createAlbum("1","photo","imageId1","albumId1")
+        client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
+
+        client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
+        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
 
         //simulate()
 
@@ -239,23 +257,6 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
             //context.system.shutdown()
           //}
         }
-
-        case SecureRandomNumber(userCount,randomNumberString) =>{
-          val today = Calendar.getInstance().getTime()
-          //println("date : "+today)
-          var toBeEncrypted : String = randomNumberString+"|"+today
-          val keys : KeysArray = keysHashMap.get(userCount) match{
-            case Some(keys) => keys
-          //case None => emptyArray
-          }
-        
-          val signature : Array[Byte] = computeSignature(randomNumberString, keys.privateKey)
-          
-          val encoder : BASE64Encoder  = new BASE64Encoder()
-          val signatureString : String = encoder.encode(signature) 
-          client_driver ! Secure_Connect(userCount,randomNumberString,signatureString)
-
-        }
       }
 
       def simulate(){
@@ -266,8 +267,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         }
 
 
-        client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
-        client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
+        //client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
+        //client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
 
         // var arrayOfUser = new ArrayBuffer[Int]() // 33
         // var i:Int = 4
@@ -281,14 +282,22 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
 
 
         //Encrypt the post data before creating it!
-        val theAesKey = "My very own, very private key here!"
-        var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
-        println("aesEncryptedMessage :" + aesEncryptedMessage)
-        client_driver ! Send_createPost("3",aesEncryptedMessage,"1")
+        //val theAesKey = "My very own, very private key here!"
+        //var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
+        //println("aesEncryptedMessage :" + aesEncryptedMessage)
+        //client_driver(3) ! Send_createPost("3",aesEncryptedMessage,"1")
 
-        client_driver ! Send_createPost("3","second post of the User","2")
-        client_driver ! Send_createPost("2","first post of the thh User","3")
-        client_driver ! Send_createPost("2","second post of the thh User","4")
+        client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
+        client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
+        //client_driver(3) ! Send_updateFriendListOfFbUser("3","1","connect")
+
+        //client_driver(3) ! Send_createPost("3","First post of the User","1")
+        //client_driver(3) ! Send_createPost("3","second post of the User","2")
+        //client_driver(2) ! Send_createPost("2","first post of the User","3")
+        //client_driver(2) ! Send_createPost("2","second post of the User","4")
+
+        
+        //client_driver(1) ! Send_GetPostOfUser("3","1")
 
         // i = 1
         // for(user <- arrayOfUser){
@@ -296,40 +305,28 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //       i = i+1
         // }
 
-        // client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
-        // client_driver ! Send_createAlbum("1","photo","imageId2","albumId1")
-        // client_driver ! Send_createAlbum("1","photo","imageId3","albumId2")
+        client_driver(1) ! Send_createAlbum("1","photo","imageId1","albumId1")
+        client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
+        //client_driver(1) ! Send_createAlbum("1","photo","imageId3","albumId2")
+       
+        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
 
         // client_driver ! Send_likePost("3","1","1")
         // client_driver ! Send_SharePost("3","1","1")
 
-
-
         // Simulation ends , below are all the sample get APIS // refer to client_log.txt
         //client_driver ! Send_getUser(2)
         //client_driver ! Send_getAllUsers(3)
-        //client_driver ! Send_getAllFriendsOfUser(1)
+        client_driver(1) ! Send_getAllFriendsOfUser(1)
+        client_driver(3) ! Send_getAllFriendsOfUser(3)
         //client_driver ! Send_getAllPosts(3)
-        client_driver ! Send_GetPostOfUser("3","1",theAesKey)
-        client_driver ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
-        //client_driver ! Send_getAllAlbumsOfUser(1)
-
+        //client_driver(3) ! Send_GetPostOfUser("3","1",theAesKey)
+        //client_driver(3) ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
+        //client_driver(1) ! Send_getAllAlbumsOfUser(1)
+        //client_driver(1) ! Send_GetPostOfUserByPostId("3","1","1")
+        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
 
       }
-
-    def computeSignature(randomNumberString : String, privateKey : PrivateKey) : Array[Byte] =
-    {
-      //println("privateKey : "+privateKey)
-      var decoder : BASE64Decoder = new BASE64Decoder()
-      var randomNumber  : Array[Byte] = decoder.decodeBuffer(randomNumberString)
-      
-      var instance : Signature = Signature.getInstance("SHA256withRSA")
-      instance.initSign(privateKey)
-      instance.update(randomNumber)
-      var signature : Array[Byte] = instance.sign()
-      //println("\nsignature client side : "+signature)
-      signature
-    }
   }
 
     object RSA
@@ -386,6 +383,28 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   val pipeline5 = sendReceive
   var master: ActorRef = null
 
+  implicit val timeout =  akka.util.Timeout(50000)
+
+  var name = self.path.name 
+  //println("self.path = "+self.path )
+  var userId = name.split(":").last
+  //var nodeId = nodeIdString.toInt 
+
+  //RSA Keys generation 
+  val keyGen : KeyPairGenerator = KeyPairGenerator.getInstance("RSA")
+  keyGen.initialize(2048)
+  val key : KeyPair = keyGen.generateKeyPair()
+  val publicKey : PublicKey = key.getPublic()
+  val privateKey : PrivateKey = key.getPrivate()
+  var publicKeyBytes : Array[Byte] = publicKey.getEncoded()
+  val encoder : BASE64Encoder  = new BASE64Encoder()
+  val pubKeyStr : String = encoder.encode(publicKeyBytes) // converting public key to string
+  var privateKeyBytes : Array[Byte] = privateKey.getEncoded()
+  val priKeyStr : String = encoder.encode(privateKeyBytes) // converting private key to string
+
+  //AES key
+  val theAesKey = "My AES key here!"+userId
+
 	def receive = 
   	{
   		case Send_createUser(userCount,dob,gender,phoneNumber) =>
@@ -401,10 +420,10 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       }
 
       //registering the new user and sending its public key to the server
-      case Secure_Register(userCount,dob,gender,phoneNumber,publicKey) =>
+      case Secure_Register(userCount,dob,gender,phoneNumber) =>
       {
         master = sender
-        val result = pipeline1(Post("http://localhost:8080/facebook/secure_registerUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber, "field5"->publicKey))))
+        val result = pipeline1(Post("http://localhost:8080/facebook/secure_registerUser",FormData(Seq("field1"->userCount, "field2"->dob, "field3"->gender, "field4"->phoneNumber, "field5"->pubKeyStr))))
         result.foreach { response =>
           println(s"Request in Secure_Register completed with status ${response.status} and content:\n${response.entity.asString}")
           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
@@ -418,29 +437,18 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         master = sender
         val result = pipeline1(Post("http://localhost:8080/facebook/secure_login", FormData(Seq("field1"->usercount, "field2"->action))))
         result.foreach { response =>
-          println(s"Request in Secure_Login completed with status ${response.status} and content:\n${response.entity.asString}")
+          println(s"Request in Secure_Login completed with status ${response.status}")
           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
           //println("response : "+response.entity.asString)
           //implicit val formats = DefaultFormats
-          //var randomNumberString = read[String](response.entity.asString)
+          var randomNumberString : String = response.entity.asString
           //println("randomNumberString in secure_login : "+randomNumberString)
-          master ! SecureRandomNumber(usercount,response.entity.asString)
+          var signatureString = secureRandomNumber(randomNumberString)
+          secure_Connect(usercount,randomNumberString,signatureString)
           //master ! TrackHopsWhileLookUpOfEachFile(1) 
 
         }    
       } 
-
-      case Secure_Connect(userCount,randomNumberString,signatureString) =>
-      {
-        master = sender
-        //println("randomNumberString in secure_connect client side = "+randomNumberString)
-        val result = pipeline2(Post("http://localhost:8080/facebook/secure_connect", FormData(Seq("field1"->userCount, "field2"->randomNumberString, "field3"->signatureString))))
-        result.foreach { response =>
-          println(s"Request in Secure_Connect completed with status ${response.status} and content:\n${response.entity.asString}")
-          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-          //master ! TrackHopsWhileLookUpOfEachFile(1) 
-        }
-      }
 
       case Send_createPage(userCount,dob,gender,phoneNumber) =>
       {
@@ -457,10 +465,12 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       case Send_createPost(userCount,content,postId) =>
       {
           //println("bpc6....")
+          var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, content)
+          //println("aesEncryptedMessage :" + aesEncryptedMessage)
           master = sender
-          val result = pipeline1(Post("http://localhost:8080/facebook/createPost",FormData(Seq("field1"->userCount, "field2"->content,"field3"->postId))))
+          val result = pipeline1(Post("http://localhost:8080/facebook/createPost",FormData(Seq("field1"->userCount, "field2"->aesEncryptedMessage,"field3"->postId))))
           result.foreach { response =>
-           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           //println(s"Request completed in Send_createPost with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
            //master ! TrackHopsWhileLookUpOfEachFile(1) 
         }
@@ -473,7 +483,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
           master = sender
           val result = pipeline1(Post("http://localhost:8080/facebook/updateFriendListOfFbUser",FormData(Seq("field1"->userName, "field2"->friendUserName,"field3"->action))))
           result.foreach { response =>
-           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           //println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
            //master ! TrackHopsWhileLookUpOfEachFile(1) 
         }
@@ -550,13 +560,24 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       }
 
       case Send_createAlbum(userCount,imageContent,imageId,albumId) =>
-      {
+      {   
+          //var aesEncryptedImage:String = Encryption.encrypt(theAesKey, imageContent)
           master = sender
           val result = pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->imageContent,"field3"->imageId,"field4"->albumId))))
           result.foreach { response =>
-           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
-           //master ! TrackHopsWhileLookUpOfEachFile(1) 
+          println(s"Request completed in Send_createAlbum with status ${response.status} and content:\n${response.entity.asString}")
+          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
+          //master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
+      }
+
+      case Send_getPicOfUserByImageId(authorId,actionUserId,imageId,albumId) =>
+      {
+        master = sender
+        val result = pipeline1(Get("http://localhost:8080/facebook/getPicOfUserByImageId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->imageId, "field4"->albumId))))
+        result.foreach{ response =>
+          println(s"Request completed in Send_getPicOfUserByImageId with status ${response.status} and content:\n${response.entity.asString}")
+          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
         }
       }
 
@@ -572,38 +593,100 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
         
       }
 
-      case Send_GetPostOfUser(authorId,actionUserId,theAesKey)=>
-      {  
+      case Send_GetPostOfUser(authorId,actionUserId)=>
+      { 
+        //println("inside Send_GetPostOfUser....") 
+        val encryptedAESkey = getAccess(authorId,publicKey) 
         master = sender
         val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUser",FormData(Seq("field1"->authorId, "field2"->actionUserId))))
         result.foreach { response =>
-           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
-           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
-           //master ! TrackHopsWhileLookUpOfEachFile(1)           
-        }     
-      }
+           //println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")      
+        }
+      }     
 
-      case Send_GetPostOfUserByPostId(authorId,actionUserId,postId,theAesKey)=>
-      {  
+      case Send_GetPostOfUserByPostId(authorId,actionUserId,postId)=>
+      { 
+        //println("inside Send_GetPostOfUserByPostId....") 
+        val encryptedAESkey = getAccess(authorId,publicKey)
         master = sender
         val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->postId))))
         result.foreach { response =>
-           println(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+           println(s"Request completed in Send_GetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
            implicit val formats = DefaultFormats
            val json = parse(response.entity.asString)
-           println(json)
+           //println("\njson = "+json)
            var content = (json \ "content").extract[String]
-           println(content)
-           var encryptedAesData = content
-           var decryptedAesData = Encryption.decrypt(theAesKey, encryptedAesData)
-           println("decryptedAesData : " + decryptedAesData)
-           master ! TrackHopsWhileLookUpOfEachFile(1)           
+           //println("\ncontent = "+content)
+           if(!(content.equals("Error"))){
+              var encryptedAesData = content
+              val decryptedAesData = decryptDataFromAPI(encryptedAesData, encryptedAESkey)              
+              println("\ndecryptedAesData inside Send_GetPostOfUserByPostId: " + decryptedAesData)
+          }
+          else
+          println("this author did not post this post")
+           //master ! TrackHopsWhileLookUpOfEachFile(1)           
         }
         
       }
 
+      case GiveAccess(publicKeyOfRequestor) => {
+       val bytes : Array[Byte] = RSA.encrypt(theAesKey,publicKeyOfRequestor)
+       sender ! bytes        
+      }
+
     }
+
+    def getAccess(authorId : String , publicKey : PublicKey) : Array[Byte] ={
+      //println("inside function getAccess...")
+      val facebookUser_actor = system.actorSelection("akka://ClientSystem/user/FacebookAPISimulator/FacebookAPIClient:"+authorId)
+      val future = facebookUser_actor ? GiveAccess(publicKey)
+      val encryptedAESkey = Await.result(future, timeout.duration).asInstanceOf[Array[Byte]]
+      encryptedAESkey
+      //facebookUser_actor ! GiveAccess(publicKey)
+    }
+
+    def decryptDataFromAPI(encryptedAesData : String , encryptedAESkey : Array[Byte]) : String = {
+      //println("inside decryptDataFromAPI....")
+        val theAesKey = RSA.decrypt(encryptedAESkey,privateKey)
+        var decryptedAesData = Encryption.decrypt(theAesKey, encryptedAesData)
+        decryptedAesData
+    }
+
+    def secureRandomNumber(randomNumberString : String) : String = {
+        
+      val signature : Array[Byte] = computeSignature(randomNumberString)
+      val encoder : BASE64Encoder  = new BASE64Encoder()
+      val signatureString : String = encoder.encode(signature)
+      signatureString 
+    }
+
+    def computeSignature(randomNumberString : String) : Array[Byte] =
+    {
+      //println("privateKey : "+privateKey)
+      var decoder : BASE64Decoder = new BASE64Decoder()
+      var randomNumber  : Array[Byte] = decoder.decodeBuffer(randomNumberString)
+      
+      var instance : Signature = Signature.getInstance("SHA256withRSA")
+      instance.initSign(privateKey)
+      instance.update(randomNumber)
+      var signature : Array[Byte] = instance.sign()
+      //println("\nsignature client side : "+signature)
+      signature
+    }
+
+    def secure_Connect(userCount : String, randomNumberString : String, signatureString : String) 
+      {
+        //master = sender
+        //println("randomNumberString in secure_connect client side = "+randomNumberString)
+        val result = pipeline2(Post("http://localhost:8080/facebook/secure_connect", FormData(Seq("field1"->userCount, "field2"->randomNumberString, "field3"->signatureString))))
+        result.foreach { response =>
+          //println(s"Request in Secure_Connect completed with status ${response.status} and content:\n${response.entity.asString}")
+          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
+          //master ! TrackHopsWhileLookUpOfEachFile(1) 
+        }
+      }
 
   def writeToLog(content :String){ 
         var pw = new FileWriter("client_log.txt",true)
