@@ -364,13 +364,27 @@ object FacebookServer extends App with SimpleRoutingApp
                       var pw7 = new FileWriter("server_log.txt",true)
                       pw7.write("Hello, createPost \n")
                       pw7.close()
-                      val authorUserName = fields.fields(0)._2
+                      val authorUserId = fields.fields(0)._2
                       val postContent = fields.fields(1)._2
                       val postId = fields.fields(2)._2
-                      //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
-                      val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"+authorUserName)
-                      facebookUser_actor ! CreatePost(postContent,postId)
-                      complete("Done")
+                      val signedMessage = fields.fields(3)._2
+                      val authorUserName = "facebookUser"+authorUserId
+
+                      val future = cache_actor ? GetPublicKeyOfUser(authorUserName)
+                      val publicKey = Await.result(future,timeout.duration).asInstanceOf[PublicKey]
+                      val result = verifySignature(postContent,signedMessage,publicKey)
+                      println("result is : "+result)
+                      if(result){
+                        println("result again : "+result)
+                        println("authorUserName : "+authorUserName)
+                        //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
+                        val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+authorUserName)
+                        facebookUser_actor ! CreatePost(postContent,postId)
+                        complete("Done")
+                      }
+                      else{
+                        complete("Signature is incorrect")
+                      }
             }
           }
         }
@@ -439,19 +453,28 @@ object FacebookServer extends App with SimpleRoutingApp
                       var pw11 = new FileWriter("server_log.txt",true)
                       pw11.write("Hello, addImageToAnAlbum \n") 
                       pw11.close()
-                      val authorUserName = fields.fields(0)._2
+                      val authorUserId = fields.fields(0)._2
                       val imageContent = fields.fields(1)._2
                       val imageId = fields.fields(2)._2
                       var albumId = fields.fields(3)._2
-                      //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
-                      val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+"facebookUser"+authorUserName)
-                      facebookUser_actor ! CreateAlbum(imageContent,imageId,albumId)
-                      complete("Done")
-            }
-          }
-        }
+                      var signedImage = fields.fields(4)._2
+                      var authorUserName = "facebookUser"+authorUserId
 
-
+                      val future = cache_actor ? GetPublicKeyOfUser(authorUserName)
+                      val publicKey = Await.result(future,timeout.duration).asInstanceOf[PublicKey]
+                      val result = verifySignature(imageContent,signedImage,publicKey)
+                      if(result){
+                        //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
+                        val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+authorUserName)
+                        facebookUser_actor ! CreateAlbum(imageContent,imageId,albumId)
+                        complete("Done")
+                      }
+                      else{
+                        complete("Signature is incorrect")
+                      }
+                    }
+                  }
+                }
 
             lazy val getPostOfUser = get{
             respondWithMediaType(MediaTypes.`application/json`)
@@ -712,7 +735,9 @@ object FacebookServer extends App with SimpleRoutingApp
 
       case PostMapForAll(userName, postMapForTheUser)=>
       {
+        println("\n PostMapForAll")
         postMapForAllUsers += (userName -> postMapForTheUser)
+        println("\npostMapForAllUsers : "+postMapForAllUsers)
       }
 
       case GetProfileMap=>
@@ -793,13 +818,16 @@ object FacebookServer extends App with SimpleRoutingApp
         }
 
         case GetPostOfUserByPostId(userName,actionUserName,postId) => {
-          println("inside GetPostOfUserByPostId")
-          //println("actionUserName : "+actionUserName)
+          println("\ninside GetPostOfUserByPostId")
+          println("\nactionUserName : "+actionUserName)
+          println("\nuserFriendMap inside getPostOfUserByPostId : "+userFriendMap)
           val friendList : List[String]= userFriendMap.get(userName) match{
           case Some(friendList) => friendList
           case None => emptyList
           }
           if (friendList.contains(actionUserName)){
+            println("friend is present")
+            println("postMapForAllUsers : "+postMapForAllUsers)
             val postMap : HashMap[String,Post] = postMapForAllUsers.get(userName) match{
             case Some(postMap) => postMap
             case None => emptyPostMap
@@ -807,7 +835,8 @@ object FacebookServer extends App with SimpleRoutingApp
             val post : Post = postMap.get(postId) match {
               case Some(post) => post
               case None => Post("Error","Error",1,1) 
-            }    
+            }
+            println("post being sent : "+post)    
             sender ! post
           }
           else{
@@ -896,8 +925,9 @@ object FacebookServer extends App with SimpleRoutingApp
                  putFriendList(userName,friendList)
           }
 
-        case CreatePost(content,postId)=>
-          {    
+        case CreatePost(content,postId)=> ////here
+          {   
+          println("CreatePost.............") 
           val postObj = Post(userName,content,0,0)
           putPostToMapAndCache(userName,postObj,postId)       
           }
@@ -1003,6 +1033,7 @@ object FacebookServer extends App with SimpleRoutingApp
       }
 
       def putPostToMapAndCache(userName :String,postObj:Post,postId:String){
+        println("putting post to map and cache")
         postMapForTheUser += (postId -> postObj)
         cache_actor ! PostMapForAll(userName, postMapForTheUser)
       }

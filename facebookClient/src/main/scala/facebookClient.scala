@@ -225,6 +225,7 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
           j = j +1
         }
         client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
+
         for(i <- 1 to 2000){
           j = j + 1
         }
@@ -434,6 +435,9 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   val priKeyStr : String = encoder.encode(privateKeyBytes) // converting private key to string
   var bytesArray = Array[Byte]()
 
+  //
+  var publicKeyMap = new scala.collection.mutable.HashMap[String,PublicKey]()
+
   var friendsPublicKey : PublicKey = null
   //AES key
   val theAesKey = "My AES key here!"+userId
@@ -494,9 +498,12 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       case Send_createPost(userCount,content,postId) =>
       {
           var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, content)
-          println("aesEncryptedMessage :" + aesEncryptedMessage)
+          val signedAesEncryptedMessage : Array[Byte] = computeSignature(aesEncryptedMessage)
+          val signedAesEncryptedMessageString : String = encoder.encode(signedAesEncryptedMessage)
+          //println("aesEncryptedMessage :" + aesEncryptedMessage)
+
           master = sender
-          val result = pipeline1(Post("http://localhost:8080/facebook/createPost",FormData(Seq("field1"->userCount, "field2"->aesEncryptedMessage,"field3"->postId))))
+          val result = pipeline1(Post("http://localhost:8080/facebook/createPost",FormData(Seq("field1"->userCount, "field2"->aesEncryptedMessage,"field3"->postId, "field4"->signedAesEncryptedMessageString))))
           result.foreach { response =>
            println(s"Request completed in Send_createPost with status ${response.status} and content:\n${response.entity.asString}")
            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
@@ -590,11 +597,16 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
           val bArray = Stream.continually(bis.read).takeWhile(-1 !=).map(_.toByte).toArray
           val bytes64 = Base64.encodeBase64(bArray)
           val imageContent1 = new String(bytes64)
-          var aesEncryptedImage:String = Encryption.encrypt(theAesKey, imageContent1)
+          var aesEncryptedImageString:String = Encryption.encrypt(theAesKey, imageContent1)
+
+          var aesEncryptedImage:String = Encryption.encrypt(theAesKey, aesEncryptedImageString)
+          val signedAesEncryptedImage : Array[Byte] = computeSignature(aesEncryptedImage)
+          val signedAesEncryptedImageString : String = encoder.encode(signedAesEncryptedImage)
+
           master = sender
-          val result = pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->aesEncryptedImage,"field3"->imageId,"field4"->albumId))))
+          val result = pipeline1(Post("http://localhost:8080/facebook/createAlbum",FormData(Seq("field1"->userCount, "field2"->aesEncryptedImage,"field3"->imageId,"field4"->albumId, "field5"->signedAesEncryptedImageString))))
           result.foreach { response =>
-          println(s"Request completed in Send_createAlbum with status ${response.status} and content:\n${response.entity.asString}")
+          //println(s"Request completed in Send_createAlbum with status ${response.status} and content:\n${response.entity.asString}")
           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")       
           master ! TrackHopsWhileLookUpOfEachFile(1) 
         }
@@ -607,6 +619,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
           if(!encryptedAESkey.isEmpty){
               val result = pipeline1(Get("http://localhost:8080/facebook/getPicOfUserByImageId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->imageId, "field4"->albumId))))
               result.foreach { response =>
+
                  println(s"Request completed in Send_getPicOfUserByImageId with status ${response.status} and content:\n${response.entity.asString}")
                  writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
                  implicit val formats = DefaultFormats
@@ -617,7 +630,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
                     var encryptedAesData = imageContent1
                     //println("\nencryptedAESkey before sending to decryptDataFromAPI : "+encryptedAESkey)
                     val decryptedAesData = decryptDataFromAPI(encryptedAesData, encryptedAESkey)              
-                    //println("\ndecryptedAesData inside Send_getPicOfUserByImageId: " + decryptedAesData)
+                    println("\ndecryptedAesData inside Send_getPicOfUserByImageId: " + decryptedAesData)
                     val decodedBArray = Base64.decodeBase64(decryptedAesData)
                     val bos = new BufferedOutputStream(new FileOutputStream("images/imageofUser"+ actionUserId +".jpg"))
                     Stream.continually(bos.write(decodedBArray))
@@ -663,13 +676,14 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
             
             val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->postId))))
             result.foreach { response =>
-               println(s"Request completed in Send_GetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
+               //println(s"Request completed in Send_GetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
                writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
                implicit val formats = DefaultFormats
                val json = parse(response.entity.asString)
                //println("\njson = "+json)
                var content = (json \ "content").extract[String]
                //println("\ncontent = "+content)
+
                if(content.equals("ErrorNL")){
                  println("Not logged in!!")
                }else{
@@ -687,6 +701,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
             }
           }
           master ! TrackHopsWhileLookUpOfEachFile(1) 
+               
         }
 
 
@@ -694,11 +709,14 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       { 
         println("inside Send_SecureGetPostOfUserByPostId....") 
         val encryptedDataAndSignatureList = getSecureAccessToPost(authorId,actionUserId, publicKey,postId)
+
         if(!encryptedDataAndSignatureList.isEmpty){
+          
+          //var publicKeyExists : Boolean = publicKeyExist(authorId)
           
           val result = pipeline1(Get("http://localhost:8080/facebook/verifyPublicKeyOfUser/"+authorId))
           result.foreach { response =>
-            println(s"Request completed in Send_SecureGetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
+            //println(s"Request completed in Send_SecureGetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
             writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
             //Convert PublicKeyString to Byte Stream
             var publicKeyString = response.entity.asString
@@ -711,6 +729,9 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
             var publicKeyUser : PublicKey = keyFact.generatePublic(x509KeySpec)
 
             //println("encryptedDataAndSignatureList : " + encryptedDataAndSignatureList)
+
+            publicKeyMap += (authorId -> publicKeyUser)
+            //println("publicKeyMap : "+publicKeyMap)
 
             var encryptedPost = encryptedDataAndSignatureList(0)
             var signature = encryptedDataAndSignatureList(1)
@@ -770,7 +791,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
           
               val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->userId, "field2"->actionUserId, "field3"->postId))))
               result.foreach { response =>
-              println(s"Request completed in Send_GetPostOfUserByPostId/GiveSecureAccessToPost with status ${response.status} and content:\n${response.entity.asString}")
+              //println(s"Request completed in Send_GetPostOfUserByPostId/GiveSecureAccessToPost with status ${response.status} and content:\n${response.entity.asString}")
               writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
               implicit val formats = DefaultFormats
               val json = parse(response.entity.asString)
@@ -797,7 +818,6 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
                    //master ! TrackHopsWhileLookUpOfEachFile(1)
                   } 
               }
-
             }
           }      
             else{
@@ -810,13 +830,24 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
     }
 
+    def checkIfPublicKeyExists(userName:String) : Boolean = {
+        //println("sessionMapOfUser" + sessionMapOfUser + "userName" + userName) 
+        var publicKeyExist : Boolean = publicKeyMap.exists(_ == (userName,"Started"))
+        println("publicKeyExist - " + publicKeyExist)
+        if(publicKeyExist){
+            return true
+          }else{
+            return false
+          }
+        }
+
     def encryptAndSignData(decryptedAesData : String , publicKeyOfRequestor : PublicKey) : List[Array[Byte]] = {
 
       val encryptedPostForRequestor : Array[Byte] = RSA.encrypt(decryptedAesData,publicKeyOfRequestor)
-      println("encryptedPostForRequestor : " + encryptedPostForRequestor)
+      //println("encryptedPostForRequestor : " + encryptedPostForRequestor)
       val signedDecryptedAesData : Array[Byte] = computeSignature(decryptedAesData)
-      println("signedDecryptedAesData :" + signedDecryptedAesData)
-      println("publicKeyOfRequestor" + publicKeyOfRequestor)
+      //println("signedDecryptedAesData :" + signedDecryptedAesData)
+      //println("publicKeyOfRequestor" + publicKeyOfRequestor)
       val listOfEncryptedAndSignedData = List(encryptedPostForRequestor,signedDecryptedAesData)
       listOfEncryptedAndSignedData
 
