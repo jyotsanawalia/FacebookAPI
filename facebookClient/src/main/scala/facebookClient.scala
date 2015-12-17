@@ -94,6 +94,8 @@ case class Secure_Login(usercount:String, action:String)
 case class KeysArray(publicKey : PublicKey, privateKey:PrivateKey)
 case class Secure_Connect(usercount:String, randomNumberString:String, signatureString:String)
 case class GiveAccess(actionUserId : String, publicKey : PublicKey)
+case class Send_SecureGetPostOfUserByPostId(authorId: String, actionUserId: String,postId: String)
+case class GiveSecureAccessToPost(actionUserId : String, publicKeyOfRequestor : PublicKey, postId : String) 
 
 object FacebookClient 
 {
@@ -240,8 +242,8 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
 
         //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
 
-        client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
-        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
+        //client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
+        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
 
         //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
         //client_driver ! Send_getAllAlbumsOfUser(1)
@@ -252,15 +254,22 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         //val theAesKey = "My very own, very private key here!"
         //var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
         //println("aesEncryptedMessage :" + aesEncryptedMessage)
-        //client_driver ! Send_createPost("3",aesEncryptedMessage,"1")
-        //client_driver ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
 
+        client_driver(1) ! Send_createPost("1","First post of the User","1")
+        //client_driver(1) ! Send_createPost("1","second post of the User","2")
+        //client_driver(2) ! Send_createPost("2","first post of the User","3")
+        //client_driver(2) ! Send_createPost("2","second post of the User","4")
 
-        //client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
+        client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
+        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
         //client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
 
         //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
-        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
+
+        //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
+        client_driver(3) ! Send_SecureGetPostOfUserByPostId("1","3","1")
+
+        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
 
         //simulate()
 
@@ -431,6 +440,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
   val priKeyStr : String = encoder.encode(privateKeyBytes) // converting private key to string
   var bytesArray = Array[Byte]()
 
+  var friendsPublicKey : PublicKey = null
   //AES key
   val theAesKey = "My AES key here!"+userId
 
@@ -682,10 +692,57 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
               }
               else
               println("this author did not post this post")
-               //master ! TrackHopsWhileLookUpOfEachFile(1)           
+               master ! TrackHopsWhileLookUpOfEachFile(1)           
         }
       }
     }
+
+
+    case Send_SecureGetPostOfUserByPostId(authorId,actionUserId,postId)=>
+      { 
+        //println("inside Send_GetPostOfUserByPostId....") 
+        val encryptedDataAndSignatureList = getSecureAccessToPost(authorId,actionUserId, publicKey,postId)
+        println("Back!! userId is" + userId)
+        if(!encryptedDataAndSignatureList.isEmpty){
+          
+          val result = pipeline1(Get("http://localhost:8080/facebook/verifyPublicKeyOfUser/"+authorId))
+          result.foreach { response =>
+            println(s"Request completed in Send_SecureGetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
+            writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+            //Convert PublicKeyString to Byte Stream
+            var publicKeyString = response.entity.asString
+            var decoder : BASE64Decoder = new BASE64Decoder()
+            var sigBytes2  : Array[Byte] = decoder.decodeBuffer(publicKeyString)
+
+            // Convert the public key bytes into a PublicKey object
+            var x509KeySpec : X509EncodedKeySpec = new X509EncodedKeySpec(sigBytes2)
+            var keyFact : KeyFactory = KeyFactory.getInstance("RSA")
+            var publicKeyUser : PublicKey = keyFact.generatePublic(x509KeySpec)
+
+            println("encryptedDataAndSignatureList : " + encryptedDataAndSignatureList)
+
+            var encryptedPost = encryptedDataAndSignatureList(0)
+            var signature = encryptedDataAndSignatureList(1)
+
+            var decryptedPost = RSA.decrypt(encryptedPost,privateKey)
+            val encoder : BASE64Encoder  = new BASE64Encoder()
+            val signatureString : String = encoder.encode(signature)
+            var result = verifySignature(decryptedPost,signatureString,publicKeyUser)
+
+            if(result){
+              println("decryptedPost received : "+decryptedPost)
+            }
+            else{
+              println("Sorry you are fake :P")
+            }
+          }
+        }
+        else
+        {
+          println("list is empty")
+        }
+        master ! TrackHopsWhileLookUpOfEachFile(1) 
+      }
 
       case GiveAccess(actionUserId , publicKeyOfRequestor) => {
         actorRequestor = sender
@@ -706,6 +763,97 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
             }
         }
       }
+
+
+      case GiveSecureAccessToPost(actionUserId , publicKeyOfRequestor, postId) => {
+        //var bytesArray = Array[Byte]()
+        actorRequestor = sender
+        //println("\nbytes initialized in GiveAccess : "+bytesArray)
+        //println("\n publicKeyOfRequestor starting : "+publicKeyOfRequestor) 
+        val result = pipeline1(Get("http://localhost:8080/facebook/verifyPublicKeyOfUser/"+actionUserId))
+        result.foreach { response =>
+           //println(s"Request completed in GiveAccess with status ${response.status} and content:\n${response.entity.asString}")
+           writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+           var publicKeyBytes : Array[Byte] = publicKeyOfRequestor.getEncoded()
+           val encoder : BASE64Encoder  = new BASE64Encoder()
+           val publicKeyString : String = encoder.encode(publicKeyBytes)
+           //println("\npublicKeyReceived : "+response.entity.asString)
+           //println("\npublicKey : "+publicKeyString)
+           if((response.entity.asString).equals(publicKeyString))
+           {
+              println("The public keys are equal. Hence the requestor is genuine.")
+          
+              val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->userId, "field2"->actionUserId, "field3"->postId))))
+              result.foreach { response =>
+              println(s"Request completed in Send_GetPostOfUserByPostId/GiveSecureAccessToPost with status ${response.status} and content:\n${response.entity.asString}")
+              writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+              implicit val formats = DefaultFormats
+              val json = parse(response.entity.asString)
+              //println("\njson = "+json)
+              var content = (json \ "content").extract[String]
+              //println("\ncontent = "+content)
+              if(!(content.equals("Error"))){
+                  var encryptedAesData = content
+                  //println("\nencryptedAESkey before sending to decryptDataFromAPI : "+encryptedAESkey)
+
+                  val decryptedAesData = Encryption.decrypt(theAesKey,encryptedAesData)              
+                  println("\ndecryptedAesData inside Send_GetPostOfUserByPostId: " + decryptedAesData)
+
+                  var arrayDataList = encryptAndSignData(decryptedAesData,publicKeyOfRequestor)
+                  actorRequestor ! arrayDataList
+
+              }
+              else{
+              println("this author did not post this post")
+              //actorRequestor ! List[Array[Byte]]
+               //master ! TrackHopsWhileLookUpOfEachFile(1)
+              }           
+            }
+          }      
+            else{
+               println("The public keys dont match")
+               actorRequestor ! Array[Byte]()
+            }
+        }
+
+      //   if(!encryptedAESkey.isEmpty){
+      //       master = sender
+      //       val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->authorId, "field2"->actionUserId, "field3"->postId))))
+      //       result.foreach { response =>
+      //          println(s"Request completed in Send_GetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
+      //          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
+      //          implicit val formats = DefaultFormats
+      //          val json = parse(response.entity.asString)
+      //          //println("\njson = "+json)
+      //          var content = (json \ "content").extract[String]
+      //          //println("\ncontent = "+content)
+      //          if(!(content.equals("Error"))){
+      //             var encryptedAesData = content
+      //             println("\nencryptedAESkey before sending to decryptDataFromAPI : "+encryptedAESkey)
+      //             val decryptedAesData = decryptDataFromAPI(encryptedAesData, encryptedAESkey)              
+      //             println("\ndecryptedAesData inside Send_GetPostOfUserByPostId: " + decryptedAesData)
+      //         }
+      //         else
+      //         println("this author did not post this post")
+      //          //master ! TrackHopsWhileLookUpOfEachFile(1)           
+      //   }
+      // }
+
+      }
+
+    }
+
+    def encryptAndSignData(decryptedAesData : String , publicKeyOfRequestor : PublicKey) : List[Array[Byte]] = {
+
+      val encryptedPostForRequestor : Array[Byte] = RSA.encrypt(decryptedAesData,publicKeyOfRequestor)
+      println("encryptedPostForRequestor : " + encryptedPostForRequestor)
+      val signedDecryptedAesData : Array[Byte] = computeSignature(decryptedAesData)
+      println("signedDecryptedAesData :" + signedDecryptedAesData)
+      println("publicKeyOfRequestor" + publicKeyOfRequestor)
+      val listOfEncryptedAndSignedData = List(encryptedPostForRequestor,signedDecryptedAesData)
+
+      listOfEncryptedAndSignedData
+
     }
 
     def getAccess(authorId : String , actionUserId : String, publicKey : PublicKey) : Array[Byte] ={
@@ -716,6 +864,19 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       val encryptedAESkey = Await.result(future, timeout.duration).asInstanceOf[Array[Byte]]
       //println("\nencryptedAESkey in getAccess : "+encryptedAESkey)
       encryptedAESkey
+      //facebookUser_actor ! GiveAccess(publicKey)
+    }
+
+
+    //more secure
+    def getSecureAccessToPost(authorId : String , actionUserId : String, publicKey : PublicKey, postId :String ) : List[Array[Byte]] ={
+      println("inside function getSecureAccessToPost ...")
+
+      val facebookUser_actor = system.actorSelection("akka://ClientSystem/user/FacebookAPISimulator/FacebookAPIClient:"+authorId)
+      val future = facebookUser_actor ? GiveSecureAccessToPost(actionUserId , publicKey, postId)
+      val encryptedDataAndSignatureList = Await.result(future, timeout.duration).asInstanceOf[List[Array[Byte]]]
+      //println("\nencryptedAESkey in getAccess : "+encryptedAESkey)
+      encryptedDataAndSignatureList
       //facebookUser_actor ! GiveAccess(publicKey)
     }
 
@@ -747,6 +908,40 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
       //println("\nsignature client side : "+signature)
       signature
     }
+
+    // def verifySignature(randomNumberString:String,signature:Array[Byte],publicKey:PublicKey) : Boolean =
+    //       {
+    //         var decoder : BASE64Decoder = new BASE64Decoder()
+    //         var randomNumber  : Array[Byte] = decoder.decodeBuffer(randomNumberString)
+    //         //var signature : Array[Byte] = decoder.decodeBuffer(signatureString)
+
+    //         //println("\nsignature in verifySignature : "+signature)
+    //         //println("\nrandomNumber in verifySignature : "+randomNumber)
+    //         //println("\npublic key in verifySignature : "+publicKey)
+
+    //         val signer : Signature = Signature.getInstance("SHA256withRSA")
+    //         signer.initVerify(publicKey)
+    //         signer.update(randomNumber)
+    //         val bool : Boolean = signer.verify(signature)
+    //         return bool
+    //       }   
+
+    def verifySignature(randomNumberString:String,signatureString:String,publicKey:PublicKey) : Boolean =
+          {
+            var decoder : BASE64Decoder = new BASE64Decoder()
+            var randomNumber  : Array[Byte] = decoder.decodeBuffer(randomNumberString)
+            var signature : Array[Byte] = decoder.decodeBuffer(signatureString)
+
+            //println("\nsignature in verifySignature : "+signature)
+            //println("\nrandomNumber in verifySignature : "+randomNumber)
+            //println("\npublic key in verifySignature : "+publicKey)
+
+            val signer : Signature = Signature.getInstance("SHA256withRSA")
+            signer.initVerify(publicKey)
+            signer.update(randomNumber)
+            val bool : Boolean = signer.verify(signature)
+            return bool
+          }
 
     def secure_Connect(userCount : String, randomNumberString : String, signatureString : String) 
       {

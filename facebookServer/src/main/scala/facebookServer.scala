@@ -548,7 +548,7 @@ object FacebookServer extends App with SimpleRoutingApp
                       var publicKeyBytes : Array[Byte] = publicKey.getEncoded()
                       val encoder : BASE64Encoder  = new BASE64Encoder()
                       val publicKeyString : String = encoder.encode(publicKeyBytes)
-                      //println("publicKey = "+publicKey)
+                      println("publicKey of userCount = "+ userCount + " : : "+publicKey)
                       complete(publicKeyString) 
                     }
               }
