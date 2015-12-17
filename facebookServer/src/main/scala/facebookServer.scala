@@ -1,3 +1,15 @@
+/***
+File Name : facebookServer.Scala
+Project Name : Secure FacebookAPI
+Authors : Prerna Mandal ( UFID : 29533906) - prernamandal@ufl.edu
+          Jyotsana Walia ( UFID : 83860191) - jwalia@ufl.edu
+Course : Disributed Operating Systems(COP5605)
+Professor : Alin Dobra
+Description : It provides APIs which uses AES, RSA-256 and SHA-256 
+to support secure data exchange between client and servers.
+School : University of Florida
+***/
+
 package FacebookAPI
 
 //spray stuff
@@ -121,7 +133,7 @@ case class GetAlbumOfUser(userName:String)
 case class AlbumMap(albumMap:HashMap[String,HashMap[String,ImagePost]])
 case class GetPicOfUserByImageId(username : String ,actionUserName:String ,picId : String ,albumId : String)
 
-//security cases
+//security map
 case class Secure_RegisterProfileInfoOfUser(userCount: Int,dob:String,gender:String, phoneNumber:String, publicKey:String)
 case class Secure_Profile(userName: String, publicKey:PublicKey) extends Serializable
 case class SecurePublicKeyMap(username:String, publicKey:PublicKey) extends Serializable
@@ -197,11 +209,11 @@ object FacebookServer extends App with SimpleRoutingApp
         //secure user login
         lazy val secure_login = post {
           path("facebook"/"secure_login"){
-            //println("secure_login....")
+            println("secure_login....")
               entity(as[FormData]){ fields =>
-                // var pw1 = new FileWriter("server_log.txt",true)
-                // pw1.write("Hello, createUserForFb \n")
-                // pw1.close()
+                 var pw1 = new FileWriter("server_log.txt",true)
+                 pw1.write("Hello, createUserForFb \n")
+                 pw1.close()
                 val userId = fields.fields(0)._2
                 val action = fields.fields(1)._2
                 var userName : String = "facebookUser"+userId
@@ -212,23 +224,37 @@ object FacebookServer extends App with SimpleRoutingApp
           }
         }
 
+        //secure user logout
+        lazy val secure_logout = post {
+          path("facebook"/"secure_logout"){
+            println("secure_logout....")
+              entity(as[FormData]){ fields =>
+                 var pw1 = new FileWriter("server_log.txt",true)
+                 pw1.write("Hello, secure_logout \n")
+                 pw1.close()
+                val userId = fields.fields(0)._2
+                var userName : String = "facebookUser"+userId
+                println("stopSession for " + userName)
+                stopSession(userName,"Stopped")
+                complete("You are logged out now!")
+              }
+          }
+        }
+
+
         lazy val secure_connect = post {
           path("facebook"/"secure_connect"){
-            //println("secure_connect....")
+            println("secure_connect....")
               entity(as[FormData]){ fields =>
-                // var pw1 = new FileWriter("server_log.txt",true)
-                // pw1.write("Hello, createUserForFb \n")
-                // pw1.close()
+                 var pw1 = new FileWriter("server_log.txt",true)
+                 pw1.write("Hello, createUserForFb \n")
+                 pw1.close()
                 val userId = fields.fields(0)._2
                 val randomNumberFromClient : String = fields.fields(1)._2
                 val signatureString = fields.fields(2)._2
                 val userName = "facebookUser"+userId
-                //println("signatureString server side : "+signatureString)
-                //val actor = system.actorSelection("akka://facebookAPI/user/"+userName)
-                // implicit val timeout =  Timeout(2 seconds)
                 val future = cache_actor ? GetPublicKeyOfUser(userName)
                 val publicKey = Await.result(future, timeout.duration).asInstanceOf[PublicKey]
-                //println("publicKey in secure_connect: "+publicKey)
                 var randomNumberString = getRandomString(userName)
                 
                 val result : Boolean = verifySignature(randomNumberString,signatureString,publicKey)
@@ -239,7 +265,6 @@ object FacebookServer extends App with SimpleRoutingApp
                   println("stopSession for " + userName)
                   stopSession(userName,"Stopped")
                 }
-                //println("result = "+result)
                 complete{
                   if(result)
                   JsonUtil.toJson("Welcome To Facebook")
@@ -253,9 +278,7 @@ object FacebookServer extends App with SimpleRoutingApp
 
         lazy val createPageForFb = post {
           path("facebook" / "createPage") {
-            //println("bp7....")
                 entity(as[FormData]) { fields =>
-                    //println("Fields = " + fields)
                     var pw2 = new FileWriter("server_log.txt",true)
                     pw2.write("Hello, createPageForFb \n")
                     pw2.close()
@@ -373,10 +396,10 @@ object FacebookServer extends App with SimpleRoutingApp
                       val future = cache_actor ? GetPublicKeyOfUser(authorUserName)
                       val publicKey = Await.result(future,timeout.duration).asInstanceOf[PublicKey]
                       val result = verifySignature(postContent,signedMessage,publicKey)
-                      println("result is : "+result)
+                      //println("result is : "+result)
                       if(result){
-                        println("result again : "+result)
-                        println("authorUserName : "+authorUserName)
+                        //println("result again : "+result)
+                        //println("authorUserName : "+authorUserName)
                         //val facebookUser_actor = system.actorOf(Props(new FacebookUser(cache_actor)),name="facebookUser"+authorUserName) 
                         val facebookUser_actor = system.actorSelection("akka://facebookAPI/user/"+authorUserName)
                         facebookUser_actor ! CreatePost(postContent,postId)
@@ -607,11 +630,6 @@ object FacebookServer extends App with SimpleRoutingApp
             var decoder : BASE64Decoder = new BASE64Decoder()
             var randomNumber  : Array[Byte] = decoder.decodeBuffer(randomNumberString)
             var signature : Array[Byte] = decoder.decodeBuffer(signatureString)
-
-            //println("\nsignature in verifySignature : "+signature)
-            //println("\nrandomNumber in verifySignature : "+randomNumber)
-            //println("\npublic key in verifySignature : "+publicKey)
-
             val signer : Signature = Signature.getInstance("SHA256withRSA")
             signer.initVerify(publicKey)
             signer.update(randomNumber)
@@ -626,30 +644,26 @@ object FacebookServer extends App with SimpleRoutingApp
               case Some(randomNumberStringTimestamp) => randomNumberStringTimestamp
               case None => "Error"
               }  
-
-              //println("randomNumberStringTimestamp = "+randomNumberStringTimestamp)
               var parts = randomNumberStringTimestamp.split("timestamp")
               var randomNumberString : String = parts(0)
               var timestamp : String = parts(1)
-
-              //println("randomNumberString : "+randomNumberString)  
               randomNumberString
           } 
 
           def startSession(userName :String,session:String){
             sessionMapOfUser += (userName -> session)
-            println(sessionMapOfUser)
+            //println(sessionMapOfUser)
           }
 
           def stopSession(userName :String,session:String){
             sessionMapOfUser += (userName -> session)
-            println(sessionMapOfUser)
+            //println(sessionMapOfUser)
           }
 
           def checkIfSessionExists(userName:String) : Boolean = {
-           println("sessionMapOfUser" + sessionMapOfUser + "userName" + userName) 
+           //println("sessionMapOfUser" + sessionMapOfUser + "userName" + userName) 
            var sessionExist : Boolean = sessionMapOfUser.exists(_ == (userName,"Started"))
-           println("sessionExist - " + sessionExist)
+           //println("sessionExist - " + sessionExist)
              if(sessionExist){
               return true
              }else{
@@ -678,6 +692,7 @@ object FacebookServer extends App with SimpleRoutingApp
           createUserForFb ~
           registerUserForFb ~
           secure_login ~
+          secure_logout ~
           secure_connect ~
           updateFriendListOfTheUser ~
           profileInfoOfUserOnFb ~
@@ -737,7 +752,7 @@ object FacebookServer extends App with SimpleRoutingApp
       {
         println("\n PostMapForAll")
         postMapForAllUsers += (userName -> postMapForTheUser)
-        println("\npostMapForAllUsers : "+postMapForAllUsers)
+        //println("\npostMapForAllUsers : "+postMapForAllUsers)
       }
 
       case GetProfileMap=>
@@ -827,7 +842,7 @@ object FacebookServer extends App with SimpleRoutingApp
           }
           if (friendList.contains(actionUserName)){
             println("friend is present")
-            println("postMapForAllUsers : "+postMapForAllUsers)
+            //println("postMapForAllUsers : "+postMapForAllUsers)
             val postMap : HashMap[String,Post] = postMapForAllUsers.get(userName) match{
             case Some(postMap) => postMap
             case None => emptyPostMap
@@ -885,14 +900,6 @@ object FacebookServer extends App with SimpleRoutingApp
             putProfile(userName,profileObj)  
             putSecureProfile(userName,publicKey) 
           }
-
-          // case GetPublicKeyOfUser(userName) =>
-          // {
-          //   val publicKey = secureProfileMap.get(userName) match{
-          //     case Some(publicKey) => publicKey
-          //   } 
-          //   sender ! publicKey
-          // }
 
           case SetProfileInfoOfPage(userCount,dob,gender,phoneNumber)=>
           {
@@ -993,14 +1000,11 @@ object FacebookServer extends App with SimpleRoutingApp
         }
 
         case GetPicOfUserByImageId(userName, actionUserName, picId, albumId) => {
-          
-          //println("imageMapAsAlbumForTheUser : "+imageMapAsAlbumForTheUser)
           if (friendList.contains(actionUserName)){
             var imageMap = imageMapAsAlbumForTheUser.get(albumId) match{
               case Some(imageMap) => imageMap
               case None => HashMap("0" -> ("0","0"))
             }
-            //println("\nImageMap in getPicOfUserByImageId : "+imageMap)
             var image = imageMap.get(picId) match{
               case Some(image) => image
               case None => ImagePost("Error","Error")
@@ -1039,22 +1043,17 @@ object FacebookServer extends App with SimpleRoutingApp
       }
 
       def putImageToMapAndCache(userName:String,imageObj:ImagePost,imageId:String,albumId:String){
-        //println("putImageToMapAndLocalDisk in:")
-        //transferImagesBetweenClientAndServer(userName,imageObj.imageContent,albumId,imageId)
         var imageMap = imageMapAsAlbumForTheUser.get(albumId) match{
                   case Some(imageMap) => imageMap
                   case None => HashMap(imageId -> imageObj)
                 }
         imageMap += (imageId -> imageObj)
         imageMapAsAlbumForTheUser += (albumId -> imageMap)
-        //println("userName = "+userName+"\timageMap : "+imageMap)
-        //println("userName = "+userName+"\timageMapAsAlbumForTheUser : "+imageMapAsAlbumForTheUser)
       }
 
 
       def transferImagesBetweenClientAndServer(userName:String,destName:String,albumId:String,imageId:String){
             var dir = new File("images/"+userName+"-"+albumId);
-            // attempt to create the directory here
             var successful:Boolean  = dir.mkdir();
             val src = new File("common/" + destName + ".jpg")
             val dest = new File("images/"+userName+"-"+albumId+"/"+ destName + "-" +imageId +".jpg")

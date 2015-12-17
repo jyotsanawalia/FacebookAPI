@@ -1,3 +1,15 @@
+/***
+File Name : facebookClient.Scala
+Project Name : Secure FacebookAPI
+Authors : Prerna Mandal ( UFID : 29533906) - prernamandal@ufl.edu
+          Jyotsana Walia ( UFID : 83860191) - jwalia@ufl.edu
+Course : Disributed Operating Systems(COP5605)
+Professor : Alin Dobra
+Description : It provides APIs which uses AES, RSA-256 and SHA-256 
+to support secure data exchange between client and servers.
+School : University of Florida
+***/
+
 package FacebookAPI
 
 import java.io.{File,FileInputStream,FileOutputStream}
@@ -18,8 +30,6 @@ import scala.concurrent._
 import akka.pattern.ask
 import akka.util.Timeout
 import scala.util.Random
-//import scala.concurrent.ExecutionContext.Implicits.global
-
 
 //Security imports
 import java.security.KeyPair
@@ -56,8 +66,6 @@ import java.util
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import org.apache.commons.codec.binary.Base64
-//import org.apache.commons.codec.binary.Base64
-//import org.apache.commons.io.IOUtils
 
 //For json encode
 import org.json4s._
@@ -87,10 +95,9 @@ case class Send_GetPostOfUserByPostId(authorId: String, actionUserId: String,pos
 case class TrackHopsWhileLookUpOfEachFile(success:Int)
 
 //security cases
-//case class Secure_Register(userCount: String, dob:String, gender:String, phoneNumber:String, publicKey:String)
 case class Secure_Register(userCount: String, dob:String, gender:String, phoneNumber:String)
 case class Secure_Login(usercount:String, action:String)
-//case class SecureRandomNumber(userCount : String,aesKey : String)
+case class Send_logout()
 case class KeysArray(publicKey : PublicKey, privateKey:PrivateKey)
 case class Secure_Connect(usercount:String, randomNumberString:String, signatureString:String)
 case class GiveAccess(actionUserId : String, publicKey : PublicKey)
@@ -113,6 +120,34 @@ object FacebookClient
 	  client_actor ! Start(system)
   }
 }
+/*
+RSA class is used for all the methods by RSA
+*/
+
+object RSA
+    {
+      def encrypt(text : String, publicKey : PublicKey) : Array[Byte] = {
+         val cipher : Cipher = Cipher.getInstance("RSA")
+         cipher.init(Cipher.ENCRYPT_MODE, publicKey)
+         var cipherText : Array[Byte] = cipher.doFinal(text.getBytes())
+         cipherText
+       }
+
+      def decrypt(byteArray : Array[Byte], privateKey : PrivateKey) : String = {
+
+        // get an RSA cipher object and print the provider
+        val cipher : Cipher = Cipher.getInstance("RSA")
+        // decrypt the text using the private key
+        cipher.init(Cipher.DECRYPT_MODE, privateKey)
+        var dectyptedText : Array[Byte] = cipher.doFinal(byteArray)
+        return new String(dectyptedText)
+      }
+    
+    }
+
+/*
+Encryption class is used for all the methods by AES
+*/
 
 object Encryption {
   def encrypt(key: String, value: String): String = {
@@ -165,25 +200,10 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
         var weighToPost = 0.04
         var weightToPostPicture = 0.03
 
-  			//val client_driver = context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient") 					
   			var gender :  String = ""
         for(i <-0 until userCount) 
   			{
           client_driver += context.actorOf(Props(new FacebookAPIClient(system)),name="FacebookAPIClient:"+i.toString)
-        
-        
-        //RSA encryption and decryption tested
-        // var bytes = RSA.encrypt("secret message",publicKey)
-        // println("encryption")
-        // println("bytes = "+bytes)
-
-        // var message = RSA.decrypt(bytes,privateKey)
-        // println("decryption")
-        // println("message = "+message)
-
-        //val keysArrayObj = new KeysArray(publicKey,privateKey) // Storing public and private keys in an KeysArrayObject
-        //keysHashMap += (i.toString -> keysArrayObj)
-
           val rnd = new scala.util.Random
           val dd = 1 + rnd.nextInt(28)
           val mm = 1 + rnd.nextInt(12)
@@ -199,211 +219,75 @@ class FacebookAPISimulator(system : ActorSystem, userCount : Int) extends Actor
           val firstPart = 300 + rnd.nextInt(700)
           val secondPart = 1000 + rnd.nextInt(9000)
           val phoneNumber : String = "("+areaCode.toString+")"+" "+firstPart.toString+"-"+secondPart.toString
-  			  //if(i%10 == 0){
-            //client_driver ! Send_createPage(i.toString,dob,gender,phoneNumber)
-          //}
-          //else{
-            //client_driver(i) ! Secure_Register(i.toString,dob,gender,phoneNumber,pubKeyStr)
+  			  // if(i%10 == 0){
+       //      client_driver ! Send_createPage(i.toString,dob,gender,phoneNumber)
+       //    }
+       //    else{
             client_driver(i) ! Secure_Register(i.toString,dob,gender,phoneNumber)
-            //client_driver(i) ! SetKeys(publicKey,privateKey,)
-            
-            //client_driver ! Send_createUser(i.toString,dob,gender,phoneNumber)
           //}
   			}
-
-        //client_driverMain ! Secure_Register("10","fwew","M","12312312")
 
         for(i <-0 until userCount) 
         {
           client_driver(i) ! Secure_Login(i.toString,"login")
         }
 
-        var j = 0
-        //client_driverMain ! Secure_Login("10","login")
+        
         client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
-        for(i <- 1 to 2000){
-          j = j +1
-        }
+        log()
         client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
 
-        for(i <- 1 to 2000){
-          j = j + 1
-        }
+        log()
         client_driver(1) ! Send_getAllFriendsOfUser(1)
          
-        for(i <- 1 to 2000){
-          j = j + 1
-        }
+        log()
         client_driver(1) ! Send_createPost("1","First post of the User","1")
-        for(i <- 1 to 4000){
-          j = j+ 1
-        }
-        //client_driver(1) ! Send_createPost("1","second post of the User","2")
+        log()
 
         client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
-        for(i <- 1 to 2000){
-          j = j+ 1
-        }
-
+        log()
+        // To check if the user is logged in or not!
         //client_driver(4) ! Send_GetPostOfUserByPostId("1","4","1")
 
         client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
-        for(i <- 1 to 2000){
-          j = j+ 1
-        }
-        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
+        log()
 
-        //client_driver ! Send_createAlbum("1","photo","imageId1","albumId1")
-        //client_driver ! Send_getAllAlbumsOfUser(1)
-
-
-        //client_driver ! Send_updateFriendListOfFbUser("1","3","connect")
-        //client_driver ! Send_updateFriendListOfFbUser("1","4","connect")
-        //val theAesKey = "My very own, very private key here!"
-        //var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
-        //println("aesEncryptedMessage :" + aesEncryptedMessage)
-
-        //client_driver(1) ! Send_createPost("1","First post of the User","1")
-        //client_driver(1) ! Send_createPost("1","second post of the User","2")
-        //client_driver(2) ! Send_createPost("2","first post of the User","3")
-        //client_driver(2) ! Send_createPost("2","second post of the User","4")
-
-        //client_driver(1) ! Send_createAlbum("1","image2","imageId1","albumId1")
-        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
-        //client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
-
-        //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
-
-        //client_driver(3) ! Send_GetPostOfUserByPostId("1","3","1")
         client_driver(3) ! Send_SecureGetPostOfUserByPostId("1","3","1")
-        for(i <- 1 to 2000){
-          j = j+ 1
-        }
+        log()
 
         client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
-        for(i <- 1 to 2000){
-          j = j+ 1
-        }
+        log()
 
-        //simulate()
+        //logout
+        client_driver(3) ! Send_logout()
 
 }
 
         case TrackHopsWhileLookUpOfEachFile(success) => {  
           trackingCounter = trackingCounter + 1
-          println("trackingCounter is" + trackingCounter)
-          var track = 8
-          // if((userCount-4)%8 == 0){
-          //   track = 53
-          // }
-          // if(success == 1 && trackingCounter == 20){
-          //   context.system.shutdown()
-          // }
-          
-          // if( success == 1 && trackingCounter >= 2*userCount + track){
-          //   println("number of apis processed : " + trackingCounter) 
-          //   println("Awesome!!!!! Total time taken for the all the apis is : " + (System.currentTimeMillis() - startTime) + " milliseconds")  
-          //   context.system.shutdown()
-          // }
-        }
-      }
-
-      def simulate(){
-
-        var numberToScale :Int = 100
-        if(userCount > 100){
-          numberToScale = 100
+          //println("trackingCounter is" + trackingCounter)
+          var track = 9
+          if( success == 1 && trackingCounter >= 2*userCount + track){
+            println("number of apis processed : " + trackingCounter) 
+            println("Awesome!!!!! Total time taken for the all the apis is : " + (System.currentTimeMillis() - startTime) + " milliseconds")  
+            context.system.shutdown()
+          }
         }
 
 
-        //client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
-        //client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
-
-        // var arrayOfUser = new ArrayBuffer[Int]() // 33
-        // var i:Int = 4
-        // while (i < numberToScale){
-        //  for(a <- 1 until 3){
-        //       client_driver ! Send_updateFriendListOfFbUser(i.toString,a.toString,"connect")
-        //  } 
-        //   arrayOfUser += i
-        //   i = i+8
-        // }
-
-
-        //Encrypt the post data before creating it!
-        //val theAesKey = "My very own, very private key here!"
-        //var aesEncryptedMessage:String = Encryption.encrypt(theAesKey, "First post of the User")
-        //println("aesEncryptedMessage :" + aesEncryptedMessage)
-        //client_driver(3) ! Send_createPost("3",aesEncryptedMessage,"1")
-
-        client_driver(1) ! Send_updateFriendListOfFbUser("1","3","connect")
-        client_driver(1) ! Send_updateFriendListOfFbUser("1","4","connect")
-        //client_driver(3) ! Send_updateFriendListOfFbUser("3","1","connect")
-
-        //client_driver(3) ! Send_createPost("3","First post of the User","1")
-        //client_driver(3) ! Send_createPost("3","second post of the User","2")
-        //client_driver(2) ! Send_createPost("2","first post of the User","3")
-        //client_driver(2) ! Send_createPost("2","second post of the User","4")
-
-        
-        //client_driver(1) ! Send_GetPostOfUser("3","1")
-
-        // i = 1
-        // for(user <- arrayOfUser){
-        //       client_driver ! Send_createPost(user.toString,"Post is about distributed operating system," + i +" numbered post!","post"+i.toString)
-        //       i = i+1
-        // }
-
-        client_driver(1) ! Send_createAlbum("1","photo","imageId1","albumId1")
-        client_driver(1) ! Send_createAlbum("1","photo","imageId2","albumId1")
-        //client_driver(1) ! Send_createAlbum("1","photo","imageId3","albumId2")
-       
-        //client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
-
-        // client_driver ! Send_likePost("3","1","1")
-        // client_driver ! Send_SharePost("3","1","1")
-
-        // Simulation ends , below are all the sample get APIS // refer to client_log.txt
-        //client_driver ! Send_getUser(2)
-        //client_driver ! Send_getAllUsers(3)
-        client_driver(1) ! Send_getAllFriendsOfUser(1)
-        client_driver(3) ! Send_getAllFriendsOfUser(3)
-        //client_driver ! Send_getAllPosts(3)
-        //client_driver(3) ! Send_GetPostOfUser("3","1",theAesKey)
-        //client_driver(3) ! Send_GetPostOfUserByPostId("3","1","1",theAesKey)
-        //client_driver(1) ! Send_getAllAlbumsOfUser(1)
-        //client_driver(1) ! Send_GetPostOfUserByPostId("3","1","1")
-        client_driver(3) ! Send_getPicOfUserByImageId("1","3","imageId1","albumId1")
-
       }
+
+      def log(){
+        // to introduce some delay
+        var j:Int = 0
+        for(i <- 1 to 2000){
+          j = j+ 1
+        }
+      }
+
   }
 
-    object RSA
-    {
-      def encrypt(text : String, publicKey : PublicKey) : Array[Byte] = {
-         val cipher : Cipher = Cipher.getInstance("RSA")
-         cipher.init(Cipher.ENCRYPT_MODE, publicKey)
-         var cipherText : Array[Byte] = cipher.doFinal(text.getBytes())
-         cipherText
-       }
-
-      def decrypt(byteArray : Array[Byte], privateKey : PrivateKey) : String = {
-
-        println("decryption")
-
-        // get an RSA cipher object and print the provider
-        val cipher : Cipher = Cipher.getInstance("RSA")
-        println("decryption1")
-        // decrypt the text using the private key
-        cipher.init(Cipher.DECRYPT_MODE, privateKey)
-        println("decryption2")
-        var dectyptedText : Array[Byte] = cipher.doFinal(byteArray)
-        println("decryption3")
-        return new String(dectyptedText)
-
-      }
     
-    }
 
 //usercount is nth number of facebook user
 class FacebookAPIClient(system:ActorSystem) extends Actor { 
@@ -479,6 +363,18 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
           var randomNumberString : String = response.entity.asString
           var signatureString = secureRandomNumber(randomNumberString)
           secure_Connect(usercount,randomNumberString,signatureString)
+          master ! TrackHopsWhileLookUpOfEachFile(1) 
+
+        }    
+      } 
+
+      case Send_logout() =>
+      {
+        master = sender
+        val result = pipeline1(Post("http://localhost:8080/facebook/secure_logout", FormData(Seq("field1"->userId))))
+        result.foreach { response =>
+          println(s"Request in secure_logout completed with status ${response.status} and content:\n${response.entity.asString}")
+          writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}")
           master ! TrackHopsWhileLookUpOfEachFile(1) 
 
         }    
@@ -712,8 +608,6 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
 
         if(!encryptedDataAndSignatureList.isEmpty){
           
-          //var publicKeyExists : Boolean = publicKeyExist(authorId)
-          
           val result = pipeline1(Get("http://localhost:8080/facebook/verifyPublicKeyOfUser/"+authorId))
           result.foreach { response =>
             //println(s"Request completed in Send_SecureGetPostOfUserByPostId with status ${response.status} and content:\n${response.entity.asString}")
@@ -727,11 +621,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
             var x509KeySpec : X509EncodedKeySpec = new X509EncodedKeySpec(sigBytes2)
             var keyFact : KeyFactory = KeyFactory.getInstance("RSA")
             var publicKeyUser : PublicKey = keyFact.generatePublic(x509KeySpec)
-
-            //println("encryptedDataAndSignatureList : " + encryptedDataAndSignatureList)
-
             publicKeyMap += (authorId -> publicKeyUser)
-            //println("publicKeyMap : "+publicKeyMap)
 
             var encryptedPost = encryptedDataAndSignatureList(0)
             var signature = encryptedDataAndSignatureList(1)
@@ -791,22 +681,17 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
           
               val result = pipeline1(Get("http://localhost:8080/facebook/getPostOfUserByPostId",FormData(Seq("field1"->userId, "field2"->actionUserId, "field3"->postId))))
               result.foreach { response =>
-              //println(s"Request completed in Send_GetPostOfUserByPostId/GiveSecureAccessToPost with status ${response.status} and content:\n${response.entity.asString}")
               writeToLog(s"Request completed with status ${response.status} and content:\n${response.entity.asString}") 
               implicit val formats = DefaultFormats
               val json = parse(response.entity.asString)
-              //println("\njson = "+json)
               var content = (json \ "content").extract[String]
-              //println("\ncontent = "+content)
               if(content.equals("ErrorNL")){
                 println("You are not logged in!")
               }else{
                     if(!(content.equals("Error"))){
                       var encryptedAesData = content
-                      //println("\nencryptedAESkey before sending to decryptDataFromAPI : "+encryptedAESkey)
-
                       val decryptedAesData = Encryption.decrypt(theAesKey,encryptedAesData)              
-                      println("\ndecryptedAesData inside Send_GetPostOfUserByPostId: " + decryptedAesData)
+                      println("\ndecryptedAesData inside GiveSecureAccessToPost: " + decryptedAesData)
 
                       var arrayDataList = encryptAndSignData(decryptedAesData,publicKeyOfRequestor)
                       actorRequestor ! arrayDataList
@@ -815,7 +700,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
                   else{
                   println("this author did not post this post")
                   actorRequestor ! List[Array[Byte]]()
-                   //master ! TrackHopsWhileLookUpOfEachFile(1)
+                  
                   } 
               }
             }
@@ -844,10 +729,7 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
     def encryptAndSignData(decryptedAesData : String , publicKeyOfRequestor : PublicKey) : List[Array[Byte]] = {
 
       val encryptedPostForRequestor : Array[Byte] = RSA.encrypt(decryptedAesData,publicKeyOfRequestor)
-      //println("encryptedPostForRequestor : " + encryptedPostForRequestor)
       val signedDecryptedAesData : Array[Byte] = computeSignature(decryptedAesData)
-      //println("signedDecryptedAesData :" + signedDecryptedAesData)
-      //println("publicKeyOfRequestor" + publicKeyOfRequestor)
       val listOfEncryptedAndSignedData = List(encryptedPostForRequestor,signedDecryptedAesData)
       listOfEncryptedAndSignedData
 
@@ -872,11 +754,11 @@ class FacebookAPIClient(system:ActorSystem) extends Actor {
     }
 
     def decryptDataFromAPI(encryptedAesData : String , encryptedAESkey : Array[Byte]) : String = {
-        println("inside decryptDataFromAPI....for userName" + userId)
+        //println("inside decryptDataFromAPI....for userName" + userId)
         val theAesKey = RSA.decrypt(encryptedAESkey,privateKey)
-        println("inside decryptDataFromAPI....for userName1" + userId)
+        //println("inside decryptDataFromAPI....for userName1" + userId)
         var decryptedAesData = Encryption.decrypt(theAesKey, encryptedAesData)
-        println("inside decryptDataFromAPI....for userName2" + userId)
+        //println("inside decryptDataFromAPI....for userName2" + userId)
         decryptedAesData
     }
 
