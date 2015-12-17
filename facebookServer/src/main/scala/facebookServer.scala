@@ -74,6 +74,8 @@ import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 
+
+
 case class Profile(userName: String,dob: String, gender:String, phoneNumber:String, emailId:String, image : String, isPage : Int) extends Serializable
 case class ProfileList(profileList : ArrayBuffer[Profile])
 case class ProfileInfo(userName:String,profileObject:Profile) extends Serializable
@@ -127,6 +129,9 @@ case class RequestRandomNumber(action : String)
 case class Random(aesKey : Array[Byte])
 case class GetPublicKeyOfUser(userName:String)
 
+//To keep a track of the session
+case class SessionMapOfUser(username:String, session:String) extends Serializable
+
 object FacebookServer extends App with SimpleRoutingApp
 { 
 
@@ -140,6 +145,8 @@ object FacebookServer extends App with SimpleRoutingApp
 	  val actorCount: Int = Runtime.getRuntime().availableProcessors()*100
     implicit val timeout =  akka.util.Timeout(50000)
     var userRandomNumberMap = new scala.collection.mutable.HashMap[String,String]()
+
+    var sessionMapOfUser = new scala.collection.mutable.HashMap[String,String]()
 
 	  println("Facebook Server Started....")
     val cache_actor = system.actorOf(Props[CacheMaster], name="cache_actor")
@@ -225,12 +232,19 @@ object FacebookServer extends App with SimpleRoutingApp
                 var randomNumberString = getRandomString(userName)
                 
                 val result : Boolean = verifySignature(randomNumberString,signatureString,publicKey)
+                if(result){
+                  println("startSession for " + userName)
+                  startSession(userName,"Started")
+                }else{
+                  println("stopSession for " + userName)
+                  stopSession(userName,"Stopped")
+                }
                 //println("result = "+result)
                 complete{
                   if(result)
                   JsonUtil.toJson("Welcome To Facebook")
                   else
-                  JsonUtil.toJson("Try again")
+                  JsonUtil.toJson("You are not logged in! Try again")
                 }
               }
           }
@@ -480,17 +494,29 @@ object FacebookServer extends App with SimpleRoutingApp
                   val userName = "facebookUser"+authorId
                   val actionUserName = "facebookUser"+actionUserId
 
+
                   var pw14 = new FileWriter("server_log.txt",true)
                   pw14.write("Hello, getPostOfUserByPostId \n") 
                   pw14.close()
-                  
-                  //val actor = system.actorSelection("akka://facebookAPI/user/"+userCount)
-                  val future = cache_actor ? GetPostOfUserByPostId(userName, actionUserName,postId)
-                  //val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[UserPostMap]
-                  val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[Post]
-                  complete{
-                    JsonUtil.toJson(postMapOfUser)
+                  var exists = checkIfSessionExists(actionUserName)
+                  println("session exists" + exists)
+                  if(exists){
+                    //val actor = system.actorSelection("akka://facebookAPI/user/"+userCount)
+                    val future = cache_actor ? GetPostOfUserByPostId(userName, actionUserName,postId)
+                    //val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[UserPostMap]
+                    println("yes!! session - ")
+                    val postMapOfUser = Await.result(future, timeout.duration).asInstanceOf[Post]
+                    println(postMapOfUser)
+                    complete{
+                      JsonUtil.toJson(postMapOfUser)
+                    }
+                  }else{
+                    complete{
+                    JsonUtil.toJson(Post("ErrorNL","ErrorNL",1,1))
+                    }
+                    //complete("Bad request! You are not logged in dude!")
                   }
+
                 }
               }
             }
@@ -548,7 +574,7 @@ object FacebookServer extends App with SimpleRoutingApp
                       var publicKeyBytes : Array[Byte] = publicKey.getEncoded()
                       val encoder : BASE64Encoder  = new BASE64Encoder()
                       val publicKeyString : String = encoder.encode(publicKeyBytes)
-                      println("publicKey of userCount = "+ userCount + " : : "+publicKey)
+                      //println("publicKey of userCount = "+ userCount + " : : "+publicKey)
                       complete(publicKeyString) 
                     }
               }
@@ -586,6 +612,27 @@ object FacebookServer extends App with SimpleRoutingApp
               //println("randomNumberString : "+randomNumberString)  
               randomNumberString
           } 
+
+          def startSession(userName :String,session:String){
+            sessionMapOfUser += (userName -> session)
+            println(sessionMapOfUser)
+          }
+
+          def stopSession(userName :String,session:String){
+            sessionMapOfUser += (userName -> session)
+            println(sessionMapOfUser)
+          }
+
+          def checkIfSessionExists(userName:String) : Boolean = {
+           println("sessionMapOfUser" + sessionMapOfUser + "userName" + userName) 
+           var sessionExist : Boolean = sessionMapOfUser.exists(_ == (userName,"Started"))
+           println("sessionExist - " + sessionExist)
+             if(sessionExist){
+              return true
+             }else{
+              return false
+             }
+          }
 
           def createRandomNumber(userName : String) : String =
           {
