@@ -1,2 +1,0 @@
-# FacebookAPI
-README
